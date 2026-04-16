@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.optimize import minimize
 
-from IFUL.util import *
+from .util import *
 
 
 class ImageSet:

@@ -6,8 +6,8 @@ from scipy.stats import norm
 from scipy.optimize import minimize
 from astropy.wcs import WCS
 
-from IFUL.util import *
-from IFUL.image_set import *
+from .util import *
+from .image_set import *
 
 
 class FlatModel:
