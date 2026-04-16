@@ -1,3 +1,5 @@
 **/.ipynb_checkpoints/
 *.log
 *.logs
+**/__pycache__/
+**/s4_models/
