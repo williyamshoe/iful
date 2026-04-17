@@ -567,7 +567,7 @@ class IFULModel:
     @staticmethod
     def get_constant_v_given_xy_bin(x, y, binno, aux_params, fitted_params=[]):
         # aux_params: [kwargs_source, sm, constant_val]
-        # fitted_params: [constant_val]
+        # fitted_params: [constant_val] or []
         if len(fitted_params) == 0:
             const_val = aux_params[-1]
         else:

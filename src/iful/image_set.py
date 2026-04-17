@@ -9,21 +9,15 @@ from .util import *
 
 
 class ImageSet:
-    def __init__(
-        self, datacube, wavelengths, zs, pixscale, gap, spectra_background
-    ):
+    def __init__(self, datacube, wavelengths, zs, pixscale, gap, spectra_background):
         self.zs = zs
         self.size = datacube.shape[0]
         self.pixscale = pixscale
         # self.wavelength_interval = wavelengths[1] - wavelengths[0]
-        self.continuum_subtraction(
-            datacube, wavelengths, gap, spectra_background
-        )
+        self.continuum_subtraction(datacube, wavelengths, gap, spectra_background)
         self.aux_info = {}
 
-    def continuum_subtraction(
-        self, datacube, wavelengths, gap, spectra_background
-    ):
+    def continuum_subtraction(self, datacube, wavelengths, gap, spectra_background):
         buffer = gap + spectra_background
         y1 = np.median(datacube[:, :, :spectra_background], axis=2)
         x1 = np.ones(y1.shape) * np.mean(wavelengths[:spectra_background])
@@ -130,7 +124,7 @@ class ImageSet:
         locations = np.array(
             [
                 [
-                    j,#-(j - (self.size / 2 - 0.5)) + (self.size / 2 - 0.5),
+                    j,  # -(j - (self.size / 2 - 0.5)) + (self.size / 2 - 0.5),
                     -(i - (self.size / 2 - 0.5)) + (self.size / 2 - 0.5),
                 ]
                 for i, j in locations_plt
