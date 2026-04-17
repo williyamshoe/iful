@@ -77,13 +77,13 @@ class FlatModel:
         kwargs_psf = {
             "psf_type": "PIXEL",
             "kernel_point_source": copy.deepcopy(
-                imageset.aux_info["psf_info"]["final_psf"]
+                imageset.aux_info["final_psf"]
             ),
             "kernel_point_source_init": copy.deepcopy(
-                imageset.aux_info["psf_info"]["final_psf"]
+                imageset.aux_info["final_psf"]
             ),
             "psf_variance_map": copy.deepcopy(
-                np.ones(imageset.aux_info["psf_info"]["final_psf"].shape) * 1e-7
+                np.ones(imageset.aux_info["final_psf"].shape) * 1e-7
             ),
         }
         kwargs_numerics = {

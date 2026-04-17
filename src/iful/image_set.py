@@ -10,19 +10,19 @@ from .util import *
 
 class ImageSet:
     def __init__(
-        self, datacube, var_datacube, wavelengths, zs, pixscale, gap, spectra_background
+        self, datacube, wavelengths, zs, pixscale, gap, spectra_background
     ):
         self.zs = zs
         self.size = datacube.shape[0]
         self.pixscale = pixscale
         # self.wavelength_interval = wavelengths[1] - wavelengths[0]
         self.continuum_subtraction(
-            datacube, var_datacube, wavelengths, gap, spectra_background
+            datacube, wavelengths, gap, spectra_background
         )
         self.aux_info = {}
 
     def continuum_subtraction(
-        self, datacube, var_datacube, wavelengths, gap, spectra_background
+        self, datacube, wavelengths, gap, spectra_background
     ):
         buffer = gap + spectra_background
         y1 = np.median(datacube[:, :, :spectra_background], axis=2)
@@ -48,9 +48,9 @@ class ImageSet:
         )
 
         self.datacube = datacube[:, :, np.min(trunc_inds) : np.max(trunc_inds) + 1]
-        self.var_datacube = var_datacube[
-            :, :, np.min(trunc_inds) : np.max(trunc_inds) + 1
-        ]
+        # self.var_datacube = var_datacube[
+        #     :, :, np.min(trunc_inds) : np.max(trunc_inds) + 1
+        # ]
         self.wavelength = wavelengths[np.min(trunc_inds) : np.max(trunc_inds) + 1]
 
         self.datacube_whitelight = np.nanmedian(self.datacube, axis=2)
@@ -123,17 +123,17 @@ class ImageSet:
         plt.gca().invert_xaxis()
         plt.show()
 
-    def mark_image_locations(self, locations):
+    def mark_image_locations(self, locations_plt):
         plt.figure(figsize=(8, 8))
         plt.imshow(np.rot90((self.datacube_whitelight * self.mask).T, 3))
 
-        locations_plt = np.array(
+        locations = np.array(
             [
                 [
-                    -(j - (self.size / 2 - 0.5)) + (self.size / 2 - 0.5),
-                    (i - (self.size / 2 - 0.5)) + (self.size / 2 - 0.5),
+                    j,#-(j - (self.size / 2 - 0.5)) + (self.size / 2 - 0.5),
+                    -(i - (self.size / 2 - 0.5)) + (self.size / 2 - 0.5),
                 ]
-                for i, j in locations
+                for i, j in locations_plt
             ]
         )
         plt.scatter(locations_plt.T[0], locations_plt.T[1], c="r", s=5)
