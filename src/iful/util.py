@@ -59,11 +59,13 @@ def gen_gif(data_datacube, model_datacube, var_datacube, mask_3d, waves, name):
         plt.subplot(1, 3, 1)
         plt.imshow((data_datacube * mask_3d)[i, :, :], vmin=0, vmax=30)
         plt.gca().set_axis_off()
+        plt.gca().invert_yaxis()
         plt.title(f"data")
 
         plt.subplot(1, 3, 2)
         plt.imshow((model_datacube * mask_3d)[i, :, :], vmin=0, vmax=30)
         plt.gca().set_axis_off()
+        plt.gca().invert_yaxis()
         plt.title(f"{waves[i]:.2f} Å\nmodel")
 
         plt.subplot(1, 3, 3)
@@ -74,6 +76,7 @@ def gen_gif(data_datacube, model_datacube, var_datacube, mask_3d, waves, name):
             cmap="bwr",
         )
         plt.gca().set_axis_off()
+        plt.gca().invert_yaxis()
         plt.title(f"data-model")
 
         plt.tight_layout()

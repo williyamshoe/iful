@@ -445,14 +445,17 @@ class IFULModel:
             v_los_img,
             cmap="bwr",
         )
+        axs[0].invert_yaxis()
         fig.colorbar(col, ax=axs[0], label="LOS Velocity [km/s]")
 
         col = axs[1].imshow(
             v_disp_img,
         )
+        axs[1].invert_yaxis()
         fig.colorbar(col, ax=axs[1], label="Velocity dispersion [km/s]")
 
         col = axs[2].imshow(np.log10(flxs_img))
+        axs[2].invert_yaxis()
         fig.colorbar(col, ax=axs[2], label="log10 flux")
         plt.show()
 
