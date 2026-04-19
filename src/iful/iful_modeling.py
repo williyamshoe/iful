@@ -70,6 +70,8 @@ class IFULModel:
                 / 2,
                 flatmodel.init_pso_fit["kwargs_source"],
             )
+        else:
+            self.num_bins = 0
 
         self.init_sersic_amp = flatmodel.init_pso_fit["kwargs_source"][0]["amp"]
 
@@ -85,7 +87,7 @@ class IFULModel:
         )
 
         self.obs_datacube = np.transpose(self.imset.datacube, (2, 0, 1))
-        self.var_datacube = np.transpose(self.imset.var_datacube, (2, 0, 1))
+        # self.var_datacube = np.transpose(self.imset.var_datacube, (2, 0, 1))
         self.datacube_mask = np.transpose(self.imset.mask_3d, (2, 0, 1))
         self.datacube_unc = self.imset.brms_3d
         self.central_wave = np.mean(self.imset.wavelength)
@@ -349,7 +351,7 @@ class IFULModel:
         model_datacube = np.array(model_datacube)
 
         res = np.nansum(
-            ((model_datacube - self.obs_datacube) ** 2 / self.var_datacube)
+            ((model_datacube - self.obs_datacube) ** 2 / self.datacube_unc) #/ self.var_datacube)
             * self.datacube_mask
         )
 
