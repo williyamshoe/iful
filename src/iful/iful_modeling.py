@@ -24,6 +24,7 @@ class IFULModel:
         num_bins,
         num_rsersics,
         spectral_res,
+        equal_weight_voronoi=False,
         constant_val=0.0,
     ):
         self.imset = imageset
@@ -34,6 +35,7 @@ class IFULModel:
         self.spectral_res = spectral_res
         self.constant_val = constant_val
         self.iful_profiles = iful_profiles
+        self.equal_weight_voronoi = equal_weight_voronoi
 
         if "SERSIC" not in iful_profiles:
             self.init_fitting_seq.fit_sequence(
@@ -61,14 +63,23 @@ class IFULModel:
 
         self.get_sourceplane_img(flatmodel)
 
-        if np.sum(["VORONOI" in s for s in self.iful_profiles]) >= 1:
+        if np.sum(["VORONOI" in s for s in self.iful_profiles]) >= 1 and self.equal_weight_voronoi:
+            source_fluxes_arg = copy.deepcopy(self.source_fluxes)
+            source_fluxes_arg[~np.isnan(source_fluxes_arg)] = 1.
+            self.voronoi_given_nbins(
+                num_bins,
+                np.nanmax(source_fluxes_arg) * 2,
+                np.nansum(source_fluxes_arg) / np.sum(~np.isnan(source_fluxes_arg)) ** 0.5 / 2,
+                flatmodel.init_pso_fit["kwargs_source"],
+                source_fluxes_arg
+            )
+        elif np.sum(["VORONOI" in s for s in self.iful_profiles]) >= 1:
             self.voronoi_given_nbins(
                 num_bins,
                 np.nanmax(self.source_fluxes) * 2,
-                np.nansum(self.source_fluxes)
-                / np.sum(~np.isnan(self.source_fluxes)) ** 0.5
-                / 2,
+                np.nansum(self.source_fluxes) / np.sum(~np.isnan(self.source_fluxes)) ** 0.5 / 2,
                 flatmodel.init_pso_fit["kwargs_source"],
+                self.source_fluxes
             )
         else:
             self.num_bins = 0
@@ -184,15 +195,15 @@ class IFULModel:
         self.source_fluxes = values
         self.dpix = dpix
 
-    def voronoi_given_nbins(self, target_y, low, high, kwargs_source, epsilon=1e-7):
+    def voronoi_given_nbins(self, target_y, low, high, kwargs_source, source_fluxes_arg, epsilon=1e-7):
         while (high - low) > epsilon:
             mid = low + (high - low) / 2.0
             bin_number, y_gen, x_gen, y_bar, x_bar, sn, nPixels, scale = (
                 voronoi_2d_binning(
                     self.pixel_locations.T[1],
                     self.pixel_locations.T[0],
-                    self.source_fluxes,
-                    np.ones(self.source_fluxes.shape),
+                    source_fluxes_arg,
+                    np.ones(source_fluxes_arg.shape),
                     mid,
                     pixelsize=None,
                     plot=False,
@@ -210,8 +221,8 @@ class IFULModel:
         bin_number, y_gen, x_gen, y_bar, x_bar, sn, nPixels, scale = voronoi_2d_binning(
             self.pixel_locations.T[1],
             self.pixel_locations.T[0],
-            self.source_fluxes,
-            np.ones(self.source_fluxes.shape),
+            source_fluxes_arg,
+            np.ones(source_fluxes_arg.shape),
             mid,
             pixelsize=None,
             plot=True,
