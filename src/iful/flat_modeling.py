@@ -17,8 +17,11 @@ class FlatModel:
         self.sourcemodel = sourcemodel
 
         self.init_pos_fit = None
+        self.init_fitting_seq = None
+        self.init_pso_fitting_seq = None   
+        self.init_fit = None
         self.init_pso_fit = None
-        self.init_pso_fitting_seq = None
+        
         self.mcmc_chains = None
 
         self.header_wcs = imageset.aux_info["header_wcs"]

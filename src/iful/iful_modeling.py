@@ -30,7 +30,7 @@ class IFULModel:
         self.sourceplane_size = sourceplane_size
         self.num_bins = num_bins
         self.num_rsersics = num_rsersics
-        self.init_fitting_seq = flatmodel.init_pso_fitting_seq
+        self.init_fitting_seq = flatmodel.init_fitting_seq
         self.spectral_res = spectral_res
         self.constant_val = constant_val
         self.iful_profiles = iful_profiles
@@ -105,13 +105,16 @@ class IFULModel:
             )
         )
 
-    def get_num_free_params(self):
-        return (
+    def get_num_free_params(self, linear_solve=False):
+        num_params = (
             self.len_model_numparams
             + self.v_los_numparams
             + self.v_disp_numparams
-            + self.flx_numparams
         )
+        # If we are linearly solving for flux, they aren't free parameters in the optimizer
+        if not linear_solve:
+            num_params += self.flx_numparams
+        return num_params
 
     def get_sourceplane_img(self, flatmodel):
         self.sourcecenter = np.array(
@@ -267,17 +270,25 @@ class IFULModel:
             return res, dists
         return res
 
-    def generate_residuals(self, all_fitted_params, return_datacube=False):
-        assert self.get_num_free_params() == len(all_fitted_params)
+    def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False):
+        assert self.get_num_free_params(linear_solve=linear_solve) == len(all_fitted_params)
 
         lens_model_params = all_fitted_params[: self.len_model_numparams]
         v_los_params = all_fitted_params[
             self.len_model_numparams : self.len_model_numparams + self.v_los_numparams
         ]
-        v_disp_params = all_fitted_params[
-            -1 * (self.flx_numparams + self.v_disp_numparams) : -1 * self.flx_numparams
-        ]
-        flx_params = all_fitted_params[-1 * self.flx_numparams :]
+        
+        # If linear_solve is True, v_disp is the end of the array. 
+        # flx_params are omitted because we will solve for them analytically.
+        if linear_solve:
+            v_disp_params = all_fitted_params[
+                self.len_model_numparams + self.v_los_numparams :
+            ]
+        else:
+            v_disp_params = all_fitted_params[
+                -1 * (self.flx_numparams + self.v_disp_numparams) : -1 * self.flx_numparams
+            ]
+            flx_params = all_fitted_params[-1 * self.flx_numparams :]
 
         kwargs_lenstronomy = self.init_fitting_seq.param_class.args2kwargs(
             lens_model_params
@@ -299,7 +310,6 @@ class IFULModel:
             )
 
         else:
-            # print('default detected')
             immodel = self.immodel_init._imageModel_list[0]
             x_source_vals, y_source_vals = (
                 self.init_x_source_vals,
@@ -313,6 +323,7 @@ class IFULModel:
             )
         else:
             binno = np.ones(x_source_vals.shape)
+            
         aux_params = [kwargs_lenstronomy["kwargs_source"], sm, self.constant_val]
 
         c = 299792
@@ -325,12 +336,66 @@ class IFULModel:
         v_disp = self.v_disp_fnc(
             x_source_vals, y_source_vals, binno, aux_params, v_disp_params
         )
-        flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, flx_params)
 
         sigma_model = v_disp * self.central_wave / c
         sigma_total = (
             sigma_model**2 + (self.central_wave / (2.355 * self.spectral_res)) ** 2
         ) ** 0.5
+
+        # ==========================================
+        # LINEAR INVERSION BLOCK
+        # ==========================================
+        if linear_solve:
+            assert self.iful_profiles[-1] == "VORONOI"
+            
+            # 1. Generate the unit source light (flux = 1 everywhere)
+            unit_source_light = np.array(
+                [
+                    np.zeros(self.imset.wavelength.shape)
+                    if np.sum(np.isnan([z, sigma_ang, 1.0])) > 0
+                    else self.imset.gen_2d_spec_fixratios([z, sigma_ang, 1.0])
+                    for z, sigma_ang in zip(z_los, sigma_total)
+                ]
+            )
+
+            # 2. Setup linear inversion mask and weights (1 / sqrt(variance))
+            mask_bool = self.datacube_mask.astype(bool)
+            valid_pixels = mask_bool #& ~np.isnan(self.datacube_unc) & (self.datacube_unc > 0)
+            
+            W = 1.0 / np.sqrt(self.datacube_unc)
+            b_data = self.obs_datacube[valid_pixels] * W
+
+            A_matrix = []
+            
+            # 3. Build design matrix by iterating over basis parameters (bins)
+            for k in range(self.flx_numparams):
+                test_flx = np.zeros(self.flx_numparams)
+                test_flx[k] = 1.0 # Isolate the k-th amplitude
+                basis_flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, test_flx)
+                
+                # Scale unit light by the basis flux profile
+                basis_source_light = unit_source_light * basis_flxs[:, np.newaxis]
+                
+                basis_datacube = np.zeros_like(self.obs_datacube)
+                for ii in range(basis_source_light.shape[1]):
+                    basis_datacube[ii] = immodel.ImageNumerics.re_size_convolve(
+                        basis_source_light[:, ii], unconvolved=False
+                    )
+                
+                # Append the flattened, weighted model response to the design matrix
+                A_matrix.append(basis_datacube[valid_pixels] * W)
+            
+            A_matrix = np.column_stack(A_matrix)
+            
+            # 4. Solve for amplitudes using Non-Negative Least Squares
+            # This ensures no unphysical negative fluxes are fitted
+            flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
+
+        # ==========================================
+        # STANDARD MODEL GENERATION
+        # ==========================================
+        # Generate final fluxes with either the fitted parameters or the linearly solved ones
+        flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, flx_params)
 
         source_light = np.array(
             [
@@ -351,11 +416,14 @@ class IFULModel:
         model_datacube = np.array(model_datacube)
 
         res = np.nansum(
-            ((model_datacube - self.obs_datacube) ** 2 / self.datacube_unc) #/ self.var_datacube)
+            ((model_datacube - self.obs_datacube) ** 2 / self.datacube_unc) 
             * self.datacube_mask
         )
 
         if return_datacube:
+            if linear_solve:
+                # Return the linearly solved fluxes so you can log them or use them in plots later
+                return res, model_datacube, flx_params
             return res, model_datacube
         return res
 

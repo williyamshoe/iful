@@ -18,6 +18,24 @@ def check_list(variable):
         return False
 
 
+def check_bounds_proximity(params, lower_bounds, upper_bounds, atol=1e-3, rtol=1e-5):
+    params = np.asarray(params)
+    lower_bounds = np.asarray(lower_bounds)
+    upper_bounds = np.asarray(upper_bounds)
+    lower_margin = lower_bounds + atol + rtol * np.abs(lower_bounds)
+    upper_margin = upper_bounds - (atol + rtol * np.abs(upper_bounds))
+    at_or_past_lower = params <= lower_margin
+    at_or_past_upper = params >= upper_margin
+    any_violation = at_or_past_lower | at_or_past_upper
+
+    return {
+        "lower_violation": at_or_past_lower,
+        "upper_violation": at_or_past_upper,
+        "any_violation": any_violation,
+        "is_safe": not any_violation.any() 
+    }
+
+
 def arctan_1d(A, B, r):
     return A * np.arctan(B * r)
 
