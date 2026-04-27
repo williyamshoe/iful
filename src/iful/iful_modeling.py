@@ -1,6 +1,7 @@
 import numpy as np
 import scipy as sp
 import copy
+import gc
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.optimize import minimize
@@ -357,9 +358,6 @@ class IFULModel:
         # LINEAR INVERSION BLOCK
         # ==========================================
         if linear_solve:
-            assert self.iful_profiles[-1] == "VORONOI"
-            
-            # 1. Generate the unit source light (flux = 1 everywhere)
             unit_source_light = np.array(
                 [
                     np.zeros(self.imset.wavelength.shape)
@@ -369,22 +367,24 @@ class IFULModel:
                 ]
             )
 
-            # 2. Setup linear inversion mask and weights (1 / sqrt(variance))
             mask_bool = self.datacube_mask.astype(bool)
-            valid_pixels = mask_bool #& ~np.isnan(self.datacube_unc) & (self.datacube_unc > 0)
+            valid_pixels = mask_bool # Keeping your custom masking rule
             
-            W = 1.0 / np.sqrt(self.datacube_unc)
-            b_data = self.obs_datacube[valid_pixels] * W
+            # Count pixels to pre-allocate exact matrix size
+            num_valid_pixels = np.sum(valid_pixels)
+            
+            # Cast W and b_data down to 32-bit floats
+            W = (1.0 / np.sqrt(self.datacube_unc)).astype(np.float32)
+            b_data = (self.obs_datacube[valid_pixels] * W).astype(np.float32)
 
-            A_matrix = []
+            # Pre-allocate A_matrix as a 32-bit float array
+            A_matrix = np.empty((num_valid_pixels, self.flx_numparams), dtype=np.float32)
             
-            # 3. Build design matrix by iterating over basis parameters (bins)
             for k in range(self.flx_numparams):
                 test_flx = np.zeros(self.flx_numparams)
-                test_flx[k] = 1.0 # Isolate the k-th amplitude
+                test_flx[k] = 1.0 
                 basis_flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, test_flx)
                 
-                # Scale unit light by the basis flux profile
                 basis_source_light = unit_source_light * basis_flxs[:, np.newaxis]
                 
                 basis_datacube = np.zeros_like(self.obs_datacube)
@@ -393,19 +393,25 @@ class IFULModel:
                         basis_source_light[:, ii], unconvolved=False
                     )
                 
-                # Append the flattened, weighted model response to the design matrix
-                A_matrix.append(basis_datacube[valid_pixels] * W)
+                # Assign directly to pre-allocated matrix and ensure it's a 32-bit float
+                A_matrix[:, k] = (basis_datacube[valid_pixels] * W).astype(np.float32)
+                
+                # Aggressive memory cleanup
+                del basis_source_light
+                del basis_datacube
+                if k % 10 == 0:
+                    gc.collect()
             
-            A_matrix = np.column_stack(A_matrix)
-            
-            # 4. Solve for amplitudes using Non-Negative Least Squares
-            # This ensures no unphysical negative fluxes are fitted
             flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
+            
+            # Clean up the large matrix right after solving
+            del A_matrix
+            del W
+            gc.collect()
 
         # ==========================================
         # STANDARD MODEL GENERATION
         # ==========================================
-        # Generate final fluxes with either the fitted parameters or the linearly solved ones
         flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, flx_params)
 
         source_light = np.array(
@@ -433,7 +439,6 @@ class IFULModel:
 
         if return_datacube:
             if linear_solve:
-                # Return the linearly solved fluxes so you can log them or use them in plots later
                 return res, model_datacube, flx_params
             return res, model_datacube
         return res
