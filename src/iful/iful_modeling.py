@@ -493,6 +493,7 @@ class IFULModel:
         v_los_img = np.zeros((image_size, image_size))
         v_disp_img = np.zeros((image_size, image_size))
         flxs_img = np.zeros((image_size, image_size))
+        aux_params = [kwargs_lenstronomy["kwargs_source"], sm, self.constant_val, self.d_s]
         for ix, x in enumerate(
             kwargs_lenstronomy["kwargs_source"][0]["center_x"] + delta_coor
         ):
@@ -507,21 +508,10 @@ class IFULModel:
                     )
                 else:
                     binno = 1
-                aux_params = [
-                    kwargs_lenstronomy["kwargs_source"],
-                    sm,
-                    self.constant_val,
-                ]
 
-                v_los = self.v_los_fnc(
-                    np.array([x]), np.array([y]), binno, aux_params, v_los_params
-                )[0]
-                v_disp = self.v_disp_fnc(
-                    np.array([x]), np.array([y]), binno, aux_params, v_disp_params
-                )[0]
-                flxs = self.flx_fnc(
-                    np.array([x]), np.array([y]), binno, aux_params, flx_params
-                )[0]
+                v_los = self.v_los_fnc(np.array(x), np.array(y), binno, aux_params, v_los_params)
+                v_disp = self.v_disp_fnc(np.array(x), np.array(y), binno, aux_params, v_disp_params)
+                flxs = self.flx_fnc(np.array(x), np.array(y), binno, aux_params, flx_params)
 
                 if np.sum(np.isnan([v_los, v_disp, flxs])) > 0 or np.isnan(binno):
                     v_los_img[ix, iy] = np.nan
