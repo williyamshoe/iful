@@ -3,12 +3,15 @@ import scipy as sp
 import copy
 import gc
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from scipy.stats import norm
 from scipy.optimize import minimize
 import lenstronomy.Util.class_creator as class_creator
 from lenstronomy.Util import param_util
 from vorbin.voronoi_2d_binning import voronoi_2d_binning
 from tqdm import tqdm
+import astropy.units as u
+from astropy.cosmology import FlatLambdaCDM
 
 from .util import *
 from .image_set import *
@@ -27,6 +30,7 @@ class IFULModel:
         spectral_res,
         equal_weight_voronoi=False,
         constant_val=0.0,
+        d_s=None,
     ):
         self.imset = imageset
         self.sourceplane_size = sourceplane_size
@@ -37,6 +41,12 @@ class IFULModel:
         self.constant_val = constant_val
         self.iful_profiles = iful_profiles
         self.equal_weight_voronoi = equal_weight_voronoi
+
+        # Angular diameter distance D_s only used if using a BH profile
+        if d_s is None:
+            self.d_s = FlatLambdaCDM(H0=70, Om0=0.3).angular_diameter_distance(imset4.zs).to(u.kpc).value
+        else:
+            self.d_s = d_s
 
         if "SERSIC" not in iful_profiles:
             self.init_fitting_seq.fit_sequence(
@@ -309,7 +319,7 @@ class IFULModel:
 
         if np.any(
             (np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2
-            > 1e-5
+            > 1e-8
         ):
             immodel = copy.deepcopy(self.imModel_classcreator)
             immodel.image_linear_solve(inv_bool=True, **kwargs_lenstronomy)
@@ -336,7 +346,7 @@ class IFULModel:
         else:
             binno = np.ones(x_source_vals.shape)
             
-        aux_params = [kwargs_lenstronomy["kwargs_source"], sm, self.constant_val]
+        aux_params = [kwargs_lenstronomy["kwargs_source"], sm, self.constant_val, self.d_s]
 
         c = 299792
         z_los = (
@@ -467,7 +477,7 @@ class IFULModel:
 
         if np.any(
             (np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2
-            > 1e-5
+            > 1e-8
         ):
             immodel = copy.deepcopy(self.imModel_classcreator)
             immodel.image_linear_solve(inv_bool=True, **kwargs_lenstronomy)
@@ -524,7 +534,7 @@ class IFULModel:
         v_los_img -= np.nanmedian(v_los_img)
 
         fig, axs = plt.subplots(1, 3, figsize=(18, 5))
-
+        
         col = axs[0].imshow(
             v_los_img,
             cmap="bwr",
@@ -532,13 +542,14 @@ class IFULModel:
         axs[0].invert_yaxis()
         fig.colorbar(col, ax=axs[0], label="LOS Velocity [km/s]")
 
-        col = axs[1].imshow(
-            v_disp_img,
-        )
+        cmap = cm.get_cmap('viridis').copy()
+        cmap.set_bad(color='black')
+
+        col = axs[1].imshow(v_disp_img, cmap=cmap)
         axs[1].invert_yaxis()
         fig.colorbar(col, ax=axs[1], label="Velocity dispersion [km/s]")
 
-        col = axs[2].imshow(np.log10(flxs_img))
+        col = axs[2].imshow(np.log10(flxs_img), cmap=cmap)
         axs[2].invert_yaxis()
         fig.colorbar(col, ax=axs[2], label="log10 flux")
         plt.show()
@@ -554,6 +565,8 @@ class IFULModel:
             return self.get_gaussian_v_given_xy_bin, 2
         elif profile_name == "POWER_LAW":
             return self.get_power_law_v_given_xy_bin, 2
+        elif profile_name == "POWER_LAW_BH":
+            return self.get_power_law_bh_v_given_xy_bin, 3
         elif profile_name == "CONSTANT_FIXED":
             return self.get_constant_v_given_xy_bin, 0
         elif profile_name == "CONSTANT_FITTED":
@@ -562,7 +575,7 @@ class IFULModel:
 
     @staticmethod
     def get_voronoi_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
-        # aux_params: [kwargs_source, sm, constant_val]
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: list same len of num of bins
         if not check_list(x):
             if np.isnan(binno):
@@ -575,7 +588,7 @@ class IFULModel:
 
     @staticmethod
     def get_arctan_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
-        # aux_params: [kwargs_source, sm, constant_val]
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [v_pa, v_a, v_b, v_c]
         kwargs_source = aux_params[0]
         v_pa, v_a, v_b, v_c = fitted_params
@@ -593,7 +606,7 @@ class IFULModel:
 
     @staticmethod
     def get_sersic_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
-        # aux_params: [kwargs_source, sm, constant_val]
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [scale]
         kwargs_source, sm = aux_params[0], aux_params[1]
         scale = fitted_params[0]
@@ -610,7 +623,7 @@ class IFULModel:
 
     @staticmethod
     def get_gaussian_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
-        # aux_params: [kwargs_source, sm, constant_val]
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [amp, sigma_model]
         if not check_list(x):
             kwargs_source = aux_params[0]
@@ -632,7 +645,7 @@ class IFULModel:
 
     @staticmethod
     def get_power_law_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
-        # aux_params: [kwargs_source, sm, constant_val]
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [scale, gamma]
         if not check_list(x):
             return get_power_law_v_given_xy_bin(
@@ -654,11 +667,41 @@ class IFULModel:
             return scale * dist ** ((2 - gamma) / 2)
 
     @staticmethod
+    def get_power_law_bh_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
+        # fitted_params: [scale, gamma, lg_bh_mass]
+        if not check_list(x):
+            return get_power_law_bh_v_given_xy_bin(
+                np.array([x]), np.array([y]), binno, aux_params, fitted_params
+            )[0]
+        else:
+            kwargs_source = aux_params[0]
+            scale, gamma, lg_bh_mass = fitted_params
+
+            x_, y_ = param_util.transform_e1e2_product_average(
+                x - kwargs_source[0]["center_x"],
+                y - kwargs_source[0]["center_y"],
+                kwargs_source[0]["e1"],
+                kwargs_source[0]["e2"],
+                center_x=0,
+                center_y=0,
+            )
+            dist = (x_**2 + y_**2) ** 0.5
+            vd_power = scale * dist ** ((2 - gamma) / 2)
+
+            G = 4.30241e-6 # in units of (km/s)^2 kpc/M_sol
+            d_s = aux_params[3]
+            dist = ((x - kwargs_source[0]["center_x"])**2 + (y - kwargs_source[0]["center_y"])**2) ** 0.5
+            vd_bh_srd = (G*(10**lg_bh_mass)/(dist/206265*d_s))
+
+            return (vd_power**2 + vd_bh_srd)**0.5
+    
+    @staticmethod
     def get_constant_v_given_xy_bin(x, y, binno, aux_params, fitted_params=[]):
-        # aux_params: [kwargs_source, sm, constant_val]
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [constant_val] or []
         if len(fitted_params) == 0:
-            const_val = aux_params[-1]
+            const_val = aux_params[2]
         else:
             const_val = fitted_params[0]
 
