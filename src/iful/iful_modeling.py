@@ -13,6 +13,10 @@ from tqdm import tqdm
 import astropy.units as u
 from astropy.cosmology import FlatLambdaCDM
 
+from lenstronomy.LightModel.Profiles.shapelets import ShapeletSet
+from lenstronomy.Util import param_util
+import math
+
 from .util import *
 from .image_set import *
 from .flat_modeling import *
@@ -85,12 +89,13 @@ class IFULModel:
                 source_fluxes_arg
             )
         elif np.sum(["VORONOI" in s for s in self.iful_profiles]) >= 1:
+            source_fluxes_arg = np.log10(copy.deepcopy(self.source_fluxes))
             self.voronoi_given_nbins(
                 num_bins,
-                np.nanmax(self.source_fluxes) * 2,
-                np.nansum(self.source_fluxes) / np.sum(~np.isnan(self.source_fluxes)) ** 0.5 / 2,
+                np.nanmax(source_fluxes_arg) * 2,
+                np.nansum(source_fluxes_arg) / np.sum(~np.isnan(source_fluxes_arg)) ** 0.5 / 2,
                 flatmodel.init_pso_fit["kwargs_source"],
-                self.source_fluxes
+                source_fluxes_arg
             )
         else:
             self.num_bins = 0
@@ -136,6 +141,8 @@ class IFULModel:
         # If we are linearly solving for flux, they aren't free parameters in the optimizer
         if not linear_solve:
             num_params += self.flx_numparams
+        elif self.iful_profiles[-1].startswith("SHAPELETS"):
+            num_params += 1
         return num_params
 
     def get_sourceplane_img(self, flatmodel):
@@ -292,7 +299,7 @@ class IFULModel:
             return res, dists
         return res
 
-    def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False):
+    def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False, debug_return=False):
         assert self.get_num_free_params(linear_solve=linear_solve) == len(all_fitted_params)
 
         lens_model_params = all_fitted_params[: self.len_model_numparams]
@@ -302,47 +309,38 @@ class IFULModel:
         
         # If linear_solve is True, v_disp is the end of the array. 
         # flx_params are omitted because we will solve for them analytically.
-        if linear_solve:
-            v_disp_params = all_fitted_params[
-                self.len_model_numparams + self.v_los_numparams :
-            ]
+        if linear_solve and not self.iful_profiles[-1].startswith("SHAPELETS"):
+            v_disp_params = all_fitted_params[self.len_model_numparams + self.v_los_numparams :]
+            flx_params_base = []
+            num_linparam = self.flx_numparams
+        elif linear_solve and self.iful_profiles[-1].startswith("SHAPELETS"):
+            v_disp_params = all_fitted_params[self.len_model_numparams + self.v_los_numparams : -1]
+            flx_params_base = all_fitted_params[-1:]
+            num_linparam = self.flx_numparams - 1
         else:
-            v_disp_params = all_fitted_params[
-                -1 * (self.flx_numparams + self.v_disp_numparams) : -1 * self.flx_numparams
-            ]
-            flx_params = all_fitted_params[-1 * self.flx_numparams :]
+            v_disp_params = all_fitted_params[-1 * (self.flx_numparams + self.v_disp_numparams) : -1 * self.flx_numparams]
+            flx_params_base = all_fitted_params[-1 * self.flx_numparams :]
+            num_linparam = 0
 
-        kwargs_lenstronomy = self.init_fitting_seq.param_class.args2kwargs(
-            lens_model_params
-        )
+        kwargs_lenstronomy = self.init_fitting_seq.param_class.args2kwargs(lens_model_params)
         kwargs_lenstronomy.pop("kwargs_tracer_source", None)
 
-        if np.any(
-            (np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2
-            > 1e-8
-        ):
+        if np.any((np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2 > 1e-8):
             immodel = copy.deepcopy(self.imModel_classcreator)
             immodel.image_linear_solve(inv_bool=True, **kwargs_lenstronomy)
             immodel = immodel._imageModel_list[0]
 
             sm = immodel.source_mapping
             ra_grid, dec_grid = immodel.ImageNumerics.coordinates_evaluate
-            x_source_vals, y_source_vals = sm._lens_model.ray_shooting(
-                ra_grid, dec_grid, kwargs_lenstronomy["kwargs_lens"]
-            )
+            x_source_vals, y_source_vals = sm._lens_model.ray_shooting(ra_grid, dec_grid, kwargs_lenstronomy["kwargs_lens"])
 
         else:
             immodel = self.immodel_init._imageModel_list[0]
-            x_source_vals, y_source_vals = (
-                self.init_x_source_vals,
-                self.init_y_source_vals,
-            )
+            x_source_vals, y_source_vals = (self.init_x_source_vals, self.init_y_source_vals,)
             sm = self.sm_init
 
         if self.num_bins > 0:
-            binno = self.given_ra_dec_return_bin_no(
-                x_source_vals, y_source_vals, kwargs_lenstronomy["kwargs_source"][0]
-            )
+            binno = self.given_ra_dec_return_bin_no(x_source_vals, y_source_vals, kwargs_lenstronomy["kwargs_source"][0])
         else:
             binno = np.ones(x_source_vals.shape)
             
@@ -367,6 +365,7 @@ class IFULModel:
         # ==========================================
         # LINEAR INVERSION BLOCK
         # ==========================================
+        
         if linear_solve:
             unit_source_light = np.array(
                 [
@@ -388,11 +387,12 @@ class IFULModel:
             b_data = (self.obs_datacube[valid_pixels] * W).astype(np.float32)
 
             # Pre-allocate A_matrix as a 32-bit float array
-            A_matrix = np.empty((num_valid_pixels, self.flx_numparams), dtype=np.float32)
+            A_matrix = np.empty((num_valid_pixels, num_linparam), dtype=np.float32)
             
-            for k in range(self.flx_numparams):
-                test_flx = np.zeros(self.flx_numparams)
+            for k in range(num_linparam):
+                test_flx = np.zeros(num_linparam)
                 test_flx[k] = 1.0 
+                test_flx = np.array(flx_params_base + list(test_flx))
                 basis_flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, test_flx)
                 
                 basis_source_light = unit_source_light * basis_flxs[:, np.newaxis]
@@ -413,6 +413,7 @@ class IFULModel:
                     gc.collect()
             
             flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
+            flx_params = np.array(flx_params_base + list(flx_params))
             
             # Clean up the large matrix right after solving
             del A_matrix
@@ -427,7 +428,7 @@ class IFULModel:
         source_light = np.array(
             [
                 np.zeros(self.imset.wavelength.shape)
-                if np.sum(np.isnan([z, sigma_ang, flx])) > 0
+                if np.any(np.isnan([z, sigma_ang, flx]))
                 else self.imset.gen_2d_spec_fixratios([z, sigma_ang, flx])
                 for z, sigma_ang, flx in zip(z_los, sigma_total, flxs)
             ]
@@ -446,6 +447,30 @@ class IFULModel:
             ((model_datacube - self.obs_datacube) ** 2 / self.datacube_unc) 
             * self.datacube_mask
         )
+
+        if debug_return:    
+            lensed_diag_imgs = np.array(
+                [
+                    [np.nan, np.nan]
+                    if flx == 0.0
+                    else [z * c - v_los_params[-1], vds]
+                    for z, vds, flx in zip(z_los, v_disp, flxs)
+                ]
+            )
+            diag_plots = []
+            diag_plots += [
+                immodel.ImageNumerics.re_size_convolve(
+                    lensed_diag_imgs[:, 0], unconvolved=False
+                )
+            ]
+            diag_plots += [
+                immodel.ImageNumerics.re_size_convolve(
+                    lensed_diag_imgs[:, 1]**2, unconvolved=False
+                )**0.5
+            ]
+            diag_plots = np.array(diag_plots)
+        
+            return res, model_datacube, flx_params, diag_plots, lensed_diag_imgs
 
         if return_datacube:
             if linear_solve:
@@ -475,10 +500,7 @@ class IFULModel:
         )
         kwargs_lenstronomy.pop("kwargs_tracer_source", None)
 
-        if np.any(
-            (np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2
-            > 1e-8
-        ):
+        if np.any((np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2 > 1e-8):
             immodel = copy.deepcopy(self.imModel_classcreator)
             immodel.image_linear_solve(inv_bool=True, **kwargs_lenstronomy)
             immodel = immodel._imageModel_list[0]
@@ -487,7 +509,7 @@ class IFULModel:
             immodel = self.immodel_init._imageModel_list[0]
             sm = self.sm_init
 
-        c = 299792
+        # c = 299792
         delta_coor = (np.arange(image_size) - image_size / 2) * dpix
 
         v_los_img = np.zeros((image_size, image_size))
@@ -509,9 +531,9 @@ class IFULModel:
                 else:
                     binno = 1
 
-                v_los = self.v_los_fnc(np.array(x), np.array(y), binno, aux_params, v_los_params)
-                v_disp = self.v_disp_fnc(np.array(x), np.array(y), binno, aux_params, v_disp_params)
-                flxs = self.flx_fnc(np.array(x), np.array(y), binno, aux_params, flx_params)
+                v_los = self.v_los_fnc(np.array([x]), np.array([y]), binno, aux_params, v_los_params)[0]
+                v_disp = self.v_disp_fnc(np.array([x]), np.array([y]), binno, aux_params, v_disp_params)[0]
+                flxs = self.flx_fnc(np.array([x]), np.array([y]), binno, aux_params, flx_params)[0]
 
                 if np.sum(np.isnan([v_los, v_disp, flxs])) > 0 or np.isnan(binno):
                     v_los_img[ix, iy] = np.nan
@@ -525,10 +547,7 @@ class IFULModel:
 
         fig, axs = plt.subplots(1, 3, figsize=(18, 5))
         
-        col = axs[0].imshow(
-            v_los_img,
-            cmap="bwr",
-        )
+        col = axs[0].imshow(v_los_img, cmap="bwr")
         axs[0].invert_yaxis()
         fig.colorbar(col, ax=axs[0], label="LOS Velocity [km/s]")
 
@@ -555,147 +574,214 @@ class IFULModel:
             return self.get_gaussian_v_given_xy_bin, 2
         elif profile_name == "POWER_LAW":
             return self.get_power_law_v_given_xy_bin, 2
+        elif profile_name == "EXPONENTIAL":
+            return self.get_exponential_v_given_xy_bin, 2
         elif profile_name == "POWER_LAW_BH":
             return self.get_power_law_bh_v_given_xy_bin, 3
         elif profile_name == "CONSTANT_FIXED":
             return self.get_constant_v_given_xy_bin, 0
         elif profile_name == "CONSTANT_FITTED":
             return self.get_constant_v_given_xy_bin, 1
+        elif profile_name == "CONSTANT_FITTED_BH":
+            return self.get_constant_bh_v_given_xy_bin, 2
+        elif profile_name.startswith("SHAPELETS"):
+            try:
+                n_max = int(profile_name.split("_")[1])
+            except (IndexError, ValueError):
+                n_max = 4  
+            num_params = int((n_max + 1) * (n_max + 2) / 2)
+            return self.get_shapelets_v_given_xy_bin, num_params + 1
+            
         raise Exception("Profile not implemented")
-
+        
     @staticmethod
     def get_voronoi_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: list same len of num of bins
-        if not check_list(x):
-            if np.isnan(binno):
-                return 0.0
-            return fitted_params[int(binno)]
-        else:
-            return np.array(
-                [0.0 if np.isnan(b) else fitted_params[int(b)] for b in binno]
-            )
+
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+
+        return np.array([0.0 if np.isnan(b) else fitted_params[int(b)] for b in binno])
 
     @staticmethod
     def get_arctan_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [v_pa, v_a, v_b, v_c]
+
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+
         kwargs_source = aux_params[0]
         v_pa, v_a, v_b, v_c = fitted_params
         c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
 
-        if not check_list(x):
-            return arctan_2d(v_pa, v_a, v_b, v_c, c_x, c_y, x, y)
-        else:
-            return np.array(
-                [
-                    arctan_2d(v_pa, v_a, v_b, v_c, c_x, c_y, xp, yp)
-                    for xp, yp in zip(x, y)
-                ]
-            )
+        return np.array([arctan_2d(v_pa, v_a, v_b, v_c, c_x, c_y, xp, yp) for xp, yp in zip(x, y)])
 
     @staticmethod
     def get_sersic_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [scale]
+
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+
         kwargs_source, sm = aux_params[0], aux_params[1]
         scale = fitted_params[0]
-
-        if not check_list(x):
-            return (
-                sm._light_model.surface_brightness(
-                    np.array([x]), np.array([y]), kwargs_source
-                )[0]
-                * scale
-            )
-        else:
-            return sm._light_model.surface_brightness(x, y, kwargs_source) * scale
+        
+        return sm._light_model.surface_brightness(x, y, kwargs_source) * scale
 
     @staticmethod
     def get_gaussian_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [amp, sigma_model]
-        if not check_list(x):
-            kwargs_source = aux_params[0]
-            amp, sigma_model = fitted_params
 
-            c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
-            dist = ((x - c_x) ** 2 + (y - c_y) ** 2) ** 0.5
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
 
-            return norm_dist(amp, 0, sigma_intrinsic, dist)
-        else:
-            return np.array(
-                [
-                    get_gaussian_v_given_xy_bin(
-                        x0, y0, binno0, aux_params, fitted_params
-                    )
-                    for x0, y0, binno0 in zip(x, y, binno)
-                ]
-            )
+        kwargs_source = aux_params[0]
+        amp, sigma_model = fitted_params
 
+        c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
+        dist = ((x - c_x) ** 2 + (y - c_y) ** 2) ** 0.5
+
+        return norm_dist(amp, 0, sigma_intrinsic, dist)
+            
     @staticmethod
     def get_power_law_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [scale, gamma]
-        if not check_list(x):
-            return get_power_law_v_given_xy_bin(
-                np.array([x]), np.array([y]), binno, aux_params, fitted_params
-            )[0]
-        else:
-            kwargs_source = aux_params[0]
-            scale, gamma = fitted_params
 
-            x_, y_ = param_util.transform_e1e2_product_average(
-                x - kwargs_source[0]["center_x"],
-                y - kwargs_source[0]["center_y"],
-                kwargs_source[0]["e1"],
-                kwargs_source[0]["e2"],
-                center_x=0,
-                center_y=0,
-            )
-            dist = (x_**2 + y_**2) ** 0.5
-            return scale * dist ** ((2 - gamma) / 2)
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+
+        kwargs_source = aux_params[0]
+        scale, gamma = fitted_params
+
+        x_, y_ = param_util.transform_e1e2_product_average(
+            x - kwargs_source[0]["center_x"],
+            y - kwargs_source[0]["center_y"],
+            kwargs_source[0]["e1"],
+            kwargs_source[0]["e2"],
+            center_x=0,
+            center_y=0,
+        )
+        dist = (x_**2 + y_**2) ** 0.5
+        return scale * dist ** ((2 - gamma) / 2)
+
+    @staticmethod
+    def get_exponential_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
+        # fitted_params: [central_vd, scale_rad]
+
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+
+        kwargs_source = aux_params[0]
+        central_vd, scale_rad = fitted_params
+
+        x_, y_ = param_util.transform_e1e2_product_average(
+            x - kwargs_source[0]["center_x"],
+            y - kwargs_source[0]["center_y"],
+            kwargs_source[0]["e1"],
+            kwargs_source[0]["e2"],
+            center_x=0,
+            center_y=0,
+        )
+        dist = (x_**2 + y_**2) ** 0.5
+        return central_vd * np.exp(-1 * dist / scale_rad)
 
     @staticmethod
     def get_power_law_bh_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [scale, gamma, lg_bh_mass]
-        if not check_list(x):
-            return get_power_law_bh_v_given_xy_bin(
-                np.array([x]), np.array([y]), binno, aux_params, fitted_params
-            )[0]
-        else:
-            kwargs_source = aux_params[0]
-            scale, gamma, lg_bh_mass = fitted_params
 
-            x_, y_ = param_util.transform_e1e2_product_average(
-                x - kwargs_source[0]["center_x"],
-                y - kwargs_source[0]["center_y"],
-                kwargs_source[0]["e1"],
-                kwargs_source[0]["e2"],
-                center_x=0,
-                center_y=0,
-            )
-            dist = (x_**2 + y_**2) ** 0.5
-            vd_power = scale * dist ** ((2 - gamma) / 2)
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
 
-            G = 4.30241e-6 # in units of (km/s)^2 kpc/M_sol
-            d_s = aux_params[3]
-            dist = ((x - kwargs_source[0]["center_x"])**2 + (y - kwargs_source[0]["center_y"])**2) ** 0.5
-            vd_bh_srd = (G*(10**lg_bh_mass)/(dist/206265*d_s))
+        kwargs_source = aux_params[0]
+        scale, gamma, lg_bh_mass = fitted_params
 
-            return (vd_power**2 + vd_bh_srd)**0.5
+        x_, y_ = param_util.transform_e1e2_product_average(
+            x - kwargs_source[0]["center_x"],
+            y - kwargs_source[0]["center_y"],
+            kwargs_source[0]["e1"],
+            kwargs_source[0]["e2"],
+            center_x=0,
+            center_y=0,
+        )
+        dist = (x_**2 + y_**2) ** 0.5
+        vd_power = scale * dist ** ((2 - gamma) / 2)
+
+        G = 4.30241e-6 # in units of (km/s)^2 kpc/M_sol
+        d_s = aux_params[3]
+        dist = ((x - kwargs_source[0]["center_x"])**2 + (y - kwargs_source[0]["center_y"])**2) ** 0.5
+        vd_bh_srd = (G*(10**lg_bh_mass)/(dist/206265*d_s))
+
+        return (vd_power**2 + vd_bh_srd)**0.5
     
     @staticmethod
     def get_constant_v_given_xy_bin(x, y, binno, aux_params, fitted_params=[]):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [constant_val] or []
+
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+        
         if len(fitted_params) == 0:
             const_val = aux_params[2]
         else:
             const_val = fitted_params[0]
 
-        if not check_list(x):
-            return const_val
-        else:
-            return np.ones(len(x)) * const_val
+        return np.ones(len(x)) * const_val
+
+    @staticmethod
+    def get_constant_bh_v_given_xy_bin(x, y, binno, aux_params, fitted_params=[]):
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
+        # fitted_params: [constant_val] or []
+
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+
+        kwargs_source = aux_params[0]
+        const_val, lg_bh_mass = fitted_params
+
+        if len(fitted_params) == 1:
+            const_val = aux_params[2]
+
+        G = 4.30241e-6 # in units of (km/s)^2 kpc/M_sol
+        d_s = aux_params[3]
+        dist = ((x - kwargs_source[0]["center_x"])**2 + (y - kwargs_source[0]["center_y"])**2) ** 0.5
+        vd_bh_srd = (G*(10**lg_bh_mass)/(dist/206265*d_s))
+
+        vd_const = np.ones(len(x)) * const_val
+
+        return (vd_const**2 + vd_bh_srd)**0.5
+
+    @staticmethod
+    def get_shapelets_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
+        # fitted_params: beta + 1D array of shapelet amplitudes
+        kwargs_source = aux_params[0]
+        beta = fitted_params[0]
+        amp_array = fitted_params[1:]
+        
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+        
+        x_ell, y_ell = param_util.transform_e1e2_product_average(
+            x - kwargs_source[0].get("center_x", 0.0),
+            y - kwargs_source[0].get("center_y", 0.0),
+            kwargs_source[0].get("e1", 0.0),
+            kwargs_source[0].get("e2", 0.0),
+            center_x=0,
+            center_y=0,
+        )
+        
+        n_max = int((-3 + math.sqrt(1 + 8 * len(amp_array))) / 2)
+        
+        shapelets = ShapeletSet()
+        
+        res = shapelets.function(x_ell, y_ell, amp_array, n_max, beta, 0.0, 0.0)
+        
+        return res
