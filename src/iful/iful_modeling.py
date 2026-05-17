@@ -451,19 +451,20 @@ class IFULModel:
         if vd_plots:    
             lensed_diag_imgs = np.array(
                 [
-                    [z * c - v_los_params[-1], vds]
+                    [1, z * c - v_los_params[-1], vds]
                     for z, vds in zip(z_los, v_disp)
                 ]
             )
             diag_plots = []
+            magn = np.mean(immodel.ImageNumerics.re_size_convolve(lensed_diag_imgs[:, 0], unconvolved=False))
             diag_plots += [
                 immodel.ImageNumerics.re_size_convolve(
-                    lensed_diag_imgs[:, 0], unconvolved=False
+                    lensed_diag_imgs[:, 1]/magn, unconvolved=False
                 )
             ]
             diag_plots += [
                 immodel.ImageNumerics.re_size_convolve(
-                    lensed_diag_imgs[:, 1]**2, unconvolved=False
+                    lensed_diag_imgs[:, 2]**2/magn, unconvolved=False
                 )**0.5
             ]
             diag_plots = np.array(diag_plots)
@@ -472,12 +473,17 @@ class IFULModel:
 
             fig, axs = plt.subplots(1, 3, figsize=(18, 5))
             
-            col = axs[0].imshow(diag_plots[0, :, :])
+            col = axs[0].imshow(diag_plots[0, :, :], cmap="bwr")
             axs[0].set_axis_off()
             axs[0].invert_yaxis()
             fig.colorbar(col, ax=axs[0], label="LOS (convolved)")
-            
-            col = axs[1].imshow(diag_plots[1, :, :])
+
+            vd_plot = diag_plots[1, :, :]
+            vd_plot[:3, :] = np.nan
+            vd_plot[-3:, :] = np.nan
+            vd_plot[:, :3] = np.nan
+            vd_plot[:, -3:] = np.nan
+            col = axs[1].imshow(vd_plot)
             axs[1].set_axis_off()
             axs[1].invert_yaxis()
             fig.colorbar(col, ax=axs[1], label="velocity dispersion (convolved)")

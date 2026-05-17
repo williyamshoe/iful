@@ -68,7 +68,9 @@ def create_gif(image_paths, output_gif_path, duration=300, loop=0):
     )
 
 
-def gen_gif(data_datacube, model_datacube, var_datacube, mask_3d, waves, name):
+def gen_gif(data_datacube, model_datacube, var_datacube, mask_3d, waves, name, overwrite=True):
+    if os.path.isfile(name) and overwrite==False:
+        return
     os.system("mkdir temp")
     imfiles = []
     for i, _ in enumerate(waves):
@@ -95,7 +97,7 @@ def gen_gif(data_datacube, model_datacube, var_datacube, mask_3d, waves, name):
         )
         plt.gca().set_axis_off()
         plt.gca().invert_yaxis()
-        plt.title(f"data-model")
+        plt.title(r"(data-model)/$\sigma$")
 
         plt.tight_layout()
 
