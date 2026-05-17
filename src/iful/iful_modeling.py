@@ -299,7 +299,7 @@ class IFULModel:
             return res, dists
         return res
 
-    def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False, debug_return=False):
+    def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False, vd_plots=False):
         assert self.get_num_free_params(linear_solve=linear_solve) == len(all_fitted_params)
 
         lens_model_params = all_fitted_params[: self.len_model_numparams]
@@ -448,13 +448,11 @@ class IFULModel:
             * self.datacube_mask
         )
 
-        if debug_return:    
+        if vd_plots:    
             lensed_diag_imgs = np.array(
                 [
-                    [np.nan, np.nan]
-                    if flx == 0.0
-                    else [z * c - v_los_params[-1], vds]
-                    for z, vds, flx in zip(z_los, v_disp, flxs)
+                    [z * c - v_los_params[-1], vds]
+                    for z, vds in zip(z_los, v_disp)
                 ]
             )
             diag_plots = []
@@ -469,9 +467,26 @@ class IFULModel:
                 )**0.5
             ]
             diag_plots = np.array(diag_plots)
-        
-            return res, model_datacube, flx_params, diag_plots, lensed_diag_imgs
 
+            # binary_mask = np.where(np.sum(model_datacube, axis=0) > , 1.0, np.nan)
+
+            fig, axs = plt.subplots(1, 3, figsize=(18, 5))
+            
+            col = axs[0].imshow(diag_plots[0, :, :])
+            axs[0].set_axis_off()
+            axs[0].invert_yaxis()
+            fig.colorbar(col, ax=axs[0], label="LOS (convolved)")
+            
+            col = axs[1].imshow(diag_plots[1, :, :])
+            axs[1].set_axis_off()
+            axs[1].invert_yaxis()
+            fig.colorbar(col, ax=axs[1], label="velocity dispersion (convolved)")
+            
+            col = axs[2].imshow(np.sum(model_datacube, axis=0))
+            axs[2].set_axis_off()
+            axs[2].invert_yaxis()
+            fig.colorbar(col, ax=axs[2], label="flux")
+        
         if return_datacube:
             if linear_solve:
                 return res, model_datacube, flx_params
