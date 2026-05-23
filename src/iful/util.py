@@ -256,13 +256,9 @@ def get_p_value(fitting_seq, kwargs_model, mask):
     return chi2.sf(chi_sq * dof, dof)
 
 
-def prune_mcmc_chains(
-    traces, deviation_threshold=3.5, stagnancy_threshold=0.01, split=False
-):
+def prune_mcmc_chains(traces, deviation_threshold=3.5, stagnancy_threshold=0.01, split=False):
     traces = np.array(traces)
-
     C, L, P = traces.shape
-
     print(f"Processing MCMC output: {C} chains, {L} iterations, {P} parameters.")
 
     chain_variances = np.var(traces, axis=1)
@@ -285,27 +281,19 @@ def prune_mcmc_chains(
 
     bad_chains_mask = stagnant_mask | outlier_mask
     kept_indices = np.where(~bad_chains_mask)[0]
-
+    
     removed_count = C - len(kept_indices)
-
     if removed_count > 0:
         print(f"-> Pruned {removed_count} chains.")
-        print(f"   - Stagnant (low relative var): {np.sum(stagnant_mask)}")
-        print(f"   - Outliers (bad convergence): {np.sum(outlier_mask)}")
-
+        
     valid_traces = traces[kept_indices, :, :]
 
     if split:
-        valid_traces_first = valid_traces[:, : L // 2, :]
-        valid_traces_second = valid_traces[:, L // 2 :, :]
-
-        flattened_traces_first = valid_traces_first.reshape(-1, P)
-        flattened_traces_second = valid_traces_second.reshape(-1, P)
-
-        return flattened_traces_first, flattened_traces_second
-
+        valid_traces_first = valid_traces[:, :L//3, :]
+        valid_traces_second = valid_traces[:, -L//3:, :]
+        return valid_traces_first.reshape(-1, P), valid_traces_second.reshape(-1, P)
+        
     return valid_traces
-
 
 def is_border_all_nan(arr_2d):
     if arr_2d.ndim != 2 or min(arr_2d.shape) < 1:

@@ -315,11 +315,11 @@ class IFULModel:
             num_linparam = self.flx_numparams
         elif linear_solve and self.iful_profiles[-1].startswith("SHAPELETS"):
             v_disp_params = all_fitted_params[self.len_model_numparams + self.v_los_numparams : -1]
-            flx_params_base = all_fitted_params[-1:]
+            flx_params_base = list(all_fitted_params[-1:])
             num_linparam = self.flx_numparams - 1
         else:
             v_disp_params = all_fitted_params[-1 * (self.flx_numparams + self.v_disp_numparams) : -1 * self.flx_numparams]
-            flx_params_base = all_fitted_params[-1 * self.flx_numparams :]
+            flx_params_base = list(all_fitted_params[-1 * self.flx_numparams :])
             num_linparam = 0
 
         kwargs_lenstronomy = self.init_fitting_seq.param_class.args2kwargs(lens_model_params)
@@ -413,7 +413,7 @@ class IFULModel:
                     gc.collect()
             
             flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
-            flx_params = np.array(flx_params_base + list(flx_params))
+            flx_params = np.array(list(flx_params_base) + list(flx_params))
             
             # Clean up the large matrix right after solving
             del A_matrix
@@ -497,6 +497,124 @@ class IFULModel:
             if linear_solve:
                 return res, model_datacube, flx_params
             return res, model_datacube
+        return res
+
+    def generate_image_residuals(self, all_fitted_params, return_image=False, linear_solve=False):
+        # The number of expected parameters is just the lens parameters + flux parameters
+        expected_params = self.len_model_numparams
+        if not linear_solve:
+            expected_params += self.flx_numparams
+        elif self.iful_profiles[-1].startswith("SHAPELETS"):
+            expected_params += 1
+            
+        assert expected_params == len(all_fitted_params), "Mismatch in number of fitted parameters."
+
+        lens_model_params = all_fitted_params[: self.len_model_numparams]
+        
+        # Parse flux parameters without v_los or v_disp
+        if linear_solve and not self.iful_profiles[-1].startswith("SHAPELETS"):
+            flx_params_base = []
+            num_linparam = self.flx_numparams
+        elif linear_solve and self.iful_profiles[-1].startswith("SHAPELETS"):
+            flx_params_base = list(all_fitted_params[-1:])
+            num_linparam = self.flx_numparams - 1
+        else:
+            flx_params_base = list(all_fitted_params[self.len_model_numparams :])
+            num_linparam = 0
+            flx_params = np.array(flx_params_base)
+
+        kwargs_lenstronomy = self.init_fitting_seq.param_class.args2kwargs(lens_model_params)
+        kwargs_lenstronomy.pop("kwargs_tracer_source", None)
+
+        if np.any((np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2 > 1e-8):
+            immodel = copy.deepcopy(self.imModel_classcreator)
+            immodel.image_linear_solve(inv_bool=True, **kwargs_lenstronomy)
+            immodel = immodel._imageModel_list[0]
+
+            sm = immodel.source_mapping
+            ra_grid, dec_grid = immodel.ImageNumerics.coordinates_evaluate
+            x_source_vals, y_source_vals = sm._lens_model.ray_shooting(ra_grid, dec_grid, kwargs_lenstronomy["kwargs_lens"])
+
+        else:
+            immodel = self.immodel_init._imageModel_list[0]
+            x_source_vals, y_source_vals = (self.init_x_source_vals, self.init_y_source_vals,)
+            sm = self.sm_init
+
+        if self.num_bins > 0:
+            binno = self.given_ra_dec_return_bin_no(x_source_vals, y_source_vals, kwargs_lenstronomy["kwargs_source"][0])
+        else:
+            binno = np.ones(x_source_vals.shape)
+            
+        aux_params = [kwargs_lenstronomy["kwargs_source"], sm, self.constant_val, self.d_s]
+
+        obs_image = self.imset.datacube_whitelight
+        unc_image = self.imset.brms_2d
+        mask_bool = self.imset.mask.astype(bool)
+
+        # ==========================================
+        # LINEAR INVERSION BLOCK
+        # ==========================================
+        
+        if linear_solve:
+            valid_pixels = mask_bool 
+            
+            # Count pixels to pre-allocate exact matrix size
+            num_valid_pixels = np.sum(valid_pixels)
+            
+            # Cast W and b_data down to 32-bit floats
+            W = (1.0 / np.sqrt(unc_image)).astype(np.float32)
+            b_data = (obs_image[valid_pixels] * W).astype(np.float32)
+
+            # Pre-allocate A_matrix as a 32-bit float array
+            A_matrix = np.empty((num_valid_pixels, num_linparam), dtype=np.float32)
+            
+            for k in range(num_linparam):
+                test_flx = np.zeros(num_linparam)
+                test_flx[k] = 1.0 
+                test_flx = np.array(flx_params_base + list(test_flx))
+                basis_flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, test_flx)
+                
+                # Directly resize and convolve the 2D basis model
+                basis_image = immodel.ImageNumerics.re_size_convolve(
+                    basis_flxs, unconvolved=False
+                )
+                
+                # Assign directly to pre-allocated matrix and ensure it's a 32-bit float
+                A_matrix[:, k] = (basis_image[valid_pixels] * W).astype(np.float32)
+                
+                # Aggressive memory cleanup
+                del basis_flxs
+                del basis_image
+                if k % 10 == 0:
+                    gc.collect()
+            
+            flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
+            flx_params = np.array(list(flx_params_base) + list(flx_params))
+            
+            # Clean up the large matrix right after solving
+            del A_matrix
+            del W
+            gc.collect()
+
+        # ==========================================
+        # STANDARD MODEL GENERATION
+        # ==========================================
+        flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, flx_params)
+
+        # Generate single 2D model image
+        model_image = immodel.ImageNumerics.re_size_convolve(
+            flxs, unconvolved=False
+        )
+
+        res = np.nansum(
+            ((model_image - obs_image) ** 2 / unc_image) 
+            * self.imset.mask
+        )
+
+        if return_image:
+            if linear_solve:
+                return res, model_image, flx_params
+            return res, model_image
         return res
 
     def generate_source_plots(self, all_fitted_params, image_size=None, dpix=None):
