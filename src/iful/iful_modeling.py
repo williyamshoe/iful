@@ -48,7 +48,7 @@ class IFULModel:
 
         # Angular diameter distance D_s only used if using a BH profile
         if d_s is None:
-            self.d_s = FlatLambdaCDM(H0=70, Om0=0.3).angular_diameter_distance(imset4.zs).to(u.kpc).value
+            self.d_s = FlatLambdaCDM(H0=70, Om0=0.3).angular_diameter_distance(imageset.zs).to(u.kpc).value
         else:
             self.d_s = d_s
 

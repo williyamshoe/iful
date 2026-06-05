@@ -219,7 +219,7 @@ class ImageSet:
                         norm_dist(
                             amp_0 * ratio,
                             rp * (1 + z),
-                            sigma_ang / (self.wavelength[1] - self.wavelength[0]),
+                            sigma_ang, #/ (self.wavelength[1] - self.wavelength[0]),
                             w,
                         )
                         for rp, ratio in zip(self.restwave_peaks, ratios_f)
@@ -243,7 +243,7 @@ class ImageSet:
                         norm_dist(
                             amp_0 * ratio,
                             rp * (1 + z),
-                            sigma_ang / (self.wavelength[1] - self.wavelength[0]),
+                            sigma_ang,# / (self.wavelength[1] - self.wavelength[0]),
                             w,
                         )
                         for rp, ratio in zip(self.restwave_peaks, ratios_f)
