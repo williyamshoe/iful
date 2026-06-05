@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=iful_mcmc
-#SBATCH --qos=preempt
+#SBATCH --qos=debug
 #SBATCH --constraint=cpu
 #SBATCH --nodes=2                
 #SBATCH --ntasks=128             # 1 master + 127 walkers
 #SBATCH --cpus-per-task=2        # Give each task 2 physical cores
-#SBATCH --time=12:00:00           
+#SBATCH --time=00:30:00           
 #SBATCH --output=mcmc_run_%j.log
 #SBATCH --error=mcmc_err_%j.log
 #SBATCH --account=deepsrch 

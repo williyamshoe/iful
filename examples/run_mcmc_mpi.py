@@ -23,20 +23,40 @@ from iful.iful_modeling import *
 import astropy.units as u
 from astropy.cosmology import FlatLambdaCDM
 
-def log_prob(params, priors=[(6, 1.104, 0.025), (7, 1.588, 0.041)]):
-    # We must access ifulmodel4 and bounds from the global scope defined by the master
-    global ifulmodel4, iful_lowerbounds, iful_upperbounds
+def log_prob(params, priors=[(7, 1.588, 0.041)], lambda_reg=1e4):
+    params = list(params[:6]) + [0] + list(params[6:])
     
     if not (np.all(params >= iful_lowerbounds) and np.all(params <= iful_upperbounds)):
         return -np.inf
+
+    params[-3] += mean_velocity
     
-    chi2_data = ifulmodel4.generate_residuals(params, linear_solve=True)
+    # Set return_datacube=True to extract the linear inversion flux parameters
+    output = ifulmodel4.generate_residuals(params, linear_solve=True, return_datacube=True)
+    chi2_data = output[0]
+    flx_params = output[2] 
+    
+    # ==========================================
+    # THE ROUGHNESS PENALTY
+    # ==========================================
+    # Check if we are using Shapelets or spatial bins (Voronoi/Pixels)
+    if ifulmodel4.iful_profiles[-1].startswith("SHAPELETS"):
+        # For shapelets, flx_params[0] is beta. flx_params[1] is the base Gaussian.
+        # We only want to penalize the high-frequency higher-order amplitudes.
+        high_order_amps = flx_params[2:] 
+        reg_penalty = lambda_reg * np.sum(high_order_amps**2)
+    else:
+        # For Voronoi or grid bins, penalize the variance (spikiness) of the fluxes.
+        # A perfectly smooth, bright source has a variance of 0.
+        reg_penalty = 0.0 #lambda_reg * np.var(flx_params)
+        
     chi2_prior = 0.0
     if priors is not None:
         for idx, mu, sigma in priors:
             chi2_prior += ((params[idx] - mu) / sigma) ** 2
             
-    return -0.5 * (chi2_data + chi2_prior)
+    # Add the regularization penalty
+    return -0.5 * (chi2_data + reg_penalty + chi2_prior)
 
 def main():
     # ==========================================================================
@@ -56,7 +76,7 @@ def main():
     d_s = FlatLambdaCDM(H0=70, Om0=0.3).angular_diameter_distance(imset4.zs).to(u.kpc).value
 
     global ifulmodel4
-    iful_profiles = ["ARCTAN", "POWER_LAW_BH", "VORONOI"]
+    iful_profiles = ["ARCTAN", "CONSTANT_FITTED_BH", "VORONOI"]
     ifulmodel4 = IFULModel(
         imset4, flatmodel4, iful_profiles,
         sourceplane_size=100, num_bins=50, num_rsersics=3,
@@ -65,8 +85,8 @@ def main():
 
     # Reconstruct bounds
     lensing_lower_bounds, lensing_upper_bounds = ifulmodel4.init_fitting_seq.likelihoodModule.param_limits
-    base_lower = [0, 0, 0, 1.430 * c, 1, 1.0, 4]
-    base_upper = [360, 1000, 10, 1.436 * c, 500, 3.0, 12]
+    base_lower = [0, 0, 0, 1.430 * c, 0., 5.0]
+    base_upper = [360, 1000, 10, 1.436 * c, 300, 10.0]
     
     global iful_lowerbounds, iful_upperbounds
     iful_lowerbounds = np.array(list(lensing_lower_bounds) + base_lower)
@@ -80,16 +100,23 @@ def main():
     res_key = "_".join(iful_profiles) + "_ifulall"
     init_params = previous_results[res_key]
 
-# ==========================================================================
+    global mean_velocity
+    mean_velocity = init_params[-3]
+
+    init_params = np.array(list(init_params[:-3]) + [init_params[-3] - mean_velocity] + list(init_params[-2:]))
+    iful_lowerbounds = np.array(list(iful_lowerbounds[:-3]) + [iful_lowerbounds[-3] - mean_velocity] + list(iful_lowerbounds[-2:]))
+    iful_upperbounds = np.array(list(iful_upperbounds[:-3]) + [iful_upperbounds[-3] - mean_velocity] + list(iful_upperbounds[-2:]))
+
+    # ==========================================================================
     # 2. HYPERPARAMETERS
     # ==========================================================================
-    ndim = len(init_params)
+    ndim = len(init_params) - 1
     mcmc_nwalkers = 127
     param_names = [f"param_{i}" for i in range(ndim)]
 
-    run_comp_len = 100
+    run_comp_len = 300
     max_iterations = 100
-    moves = [(emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2)] 
+    moves = [(emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2)]
 
     # ==========================================================================
     # 3. MPI EXECUTION & MASTER-ONLY SETUP
@@ -127,8 +154,16 @@ def main():
             print(" INITIALIZING NEW MCMC CHAIN FROM SCRATCH")
             print("=======================================================\n")
             backend.reset(mcmc_nwalkers, ndim)
-            init_pos_mcmc = np.array(init_params) + 1e-4 * np.random.randn(mcmc_nwalkers, ndim)
-            pos = np.clip(init_pos_mcmc, iful_lowerbounds + 1e-8, iful_upperbounds - 1e-8)
+        
+            init_pos_mcmc = [init_params]
+            while len(init_pos_mcmc) < mcmc_nwalkers:
+                scale = (iful_upperbounds - iful_lowerbounds) * 0.01
+                all_init_fits_t = np.array(init_params) + np.random.normal(0, scale)
+                if np.all(all_init_fits_t >= iful_lowerbounds) and np.all(all_init_fits_t <= iful_upperbounds):
+                    init_pos_mcmc += [all_init_fits_t]
+            pos = np.array(init_pos_mcmc)
+            pos = np.delete(pos, 6, axis=1)
+            
         else:
             print("\n=======================================================")
             print(f" RESUMING INTERRUPTED RUN!")
@@ -141,7 +176,7 @@ def main():
         # Initialize the native emcee sampler
         sampler = emcee.EnsembleSampler(
             mcmc_nwalkers, ndim, log_prob, 
-            pool=pool, backend=backend, moves=moves
+            pool=pool, backend=backend, moves=moves,
         )
 
         while True:
@@ -154,7 +189,7 @@ def main():
                 print("Chains have converged! Exiting loop.")
                 break
 
-            sampler.run_mcmc(pos, run_comp_len, progress=True)
+            sampler.run_mcmc(pos, run_comp_len//3, progress=True)
             pos = None 
 
             with open(f'{model_dir}/bandend_i.txt', "w") as f:
@@ -163,36 +198,54 @@ def main():
             total_steps = sampler.iteration
             print(f"Total accumulated iterations in backend: {total_steps}")
 
-            tau = sampler.get_autocorr_time(tol=0)
-            max_tau = np.max(tau)
-            
-            converged = np.all(tau * 20 < total_steps)
-            if not np.isinf(old_tau).any():
-                tau_diff = np.abs(old_tau - tau) / tau
-                converged &= np.all(tau_diff < 0.05)
-            else:
-                converged = False
+            full_chain = sampler.get_chain(flat=False)
+
+            burnin_cutoff = -1 * run_comp_len
+            gl_stat = full_chain[burnin_cutoff:, :, :]
+
+            if len(gl_stat) < run_comp_len:
+                continue
                 
-            old_tau = tau
+            gl_stat = gl_stat.transpose(1, 0, 2)
+            pruned_collapsed_chains_first, pruned_collapsed_chains_second = prune_mcmc_chains(gl_stat, split=True)
+        
+            first_16 = np.percentile(pruned_collapsed_chains_first, 16, axis=0)
+            first_84 = np.percentile(pruned_collapsed_chains_first, 84, axis=0)
+        
+            second_16 = np.percentile(pruned_collapsed_chains_second, 16, axis=0)
+            second_84 = np.percentile(pruned_collapsed_chains_second, 84, axis=0)
+            allowed_var = (second_84 - second_16)*.05
+        
+            second_50 = np.percentile(pruned_collapsed_chains_second, 50, axis=0)
+            second_std = np.std(pruned_collapsed_chains_second, axis=0)
+        
+            convergence_ind = [(np.abs(s16 - f16) <= av) and (np.abs(s84 - f84) <= av) for f16, f84, s16, s84, av in zip(first_16, first_84, second_16, second_84, allowed_var)]
+            converged = np.sum(convergence_ind)/len(convergence_ind) >= 0.9
 
-            print(f"Max autocorrelation time (tau): {max_tau:.2f}")
-            print(f"Current iterations: {total_steps} (Target for convergence: > {20 * max_tau:.2f})")
-            print(f"CONVERGENCE : {converged}")
+            # tau = sampler.get_autocorr_time(tol=0)
+            # max_tau = np.max(tau)
             
-            burnin = int(2 * max_tau) if max_tau > 0 else 0
-            if burnin >= total_steps:
-                burnin = total_steps // 2
+            # converged = np.all(tau * 20 < total_steps)
+            # if not np.isinf(old_tau).any():
+            #     tau_diff = np.abs(old_tau - tau) / tau
+            #     converged &= np.all(tau_diff < 0.05)
+            # else:
+            #     converged = False
+                
+            # old_tau = tau
 
-            print(f"Discarding {burnin} steps as burn-in for summary statistics...")
+            # print(f"Max autocorrelation time (tau): {max_tau:.2f}")
+            # print(f"Current iterations: {total_steps} (Target for convergence: > {20 * max_tau:.2f})")
+            # print(f"CONVERGENCE : {converged}")
+            
+            # burnin = int(2 * max_tau) if max_tau > 0 else 0
+            # if burnin >= total_steps:
+            #     burnin = total_steps // 2
             
             try:
-                flat_chain = sampler.get_chain(discard=burnin, flat=True)
-                medians = np.median(flat_chain, axis=0)
-                stds = np.std(flat_chain, axis=0)
 
-                for i, (p, med, mstd) in enumerate(zip(param_names, medians, stds)):
-                    conv_flag = (tau[i] * 20 < total_steps)
-                    print(f"{p:<25}: {med:>15.5f} +- {mstd:>15.5f}    tau: {tau[i]:>6.1f}   conv: {conv_flag}")
+                for i, (p, med, mstd, conv_flag) in enumerate(zip(param_names, second_50, second_std, convergence_ind)):
+                    print(f"{p:<25}: {med:>15.5f} +- {mstd:>15.5f}   conv: {conv_flag}")
             except ValueError:
                 print("Chain still too short to compute reliable summary statistics.")
 
