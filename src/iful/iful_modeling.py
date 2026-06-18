@@ -320,6 +320,7 @@ class IFULModel:
         else:
             v_disp_params = all_fitted_params[-1 * (self.flx_numparams + self.v_disp_numparams) : -1 * self.flx_numparams]
             flx_params_base = list(all_fitted_params[-1 * self.flx_numparams :])
+            flx_params = np.array(flx_params_base)
             num_linparam = 0
 
         kwargs_lenstronomy = self.init_fitting_seq.param_class.args2kwargs(lens_model_params)
@@ -479,10 +480,10 @@ class IFULModel:
             fig.colorbar(col, ax=axs[0], label="LOS (convolved)")
 
             vd_plot = diag_plots[1, :, :]
-            vd_plot[:3, :] = np.nan
-            vd_plot[-3:, :] = np.nan
-            vd_plot[:, :3] = np.nan
-            vd_plot[:, -3:] = np.nan
+            #vd_plot[:3, :] = np.nan
+            #vd_plot[-3:, :] = np.nan
+            #vd_plot[:, :3] = np.nan
+            #vd_plot[:, -3:] = np.nan
             col = axs[1].imshow(vd_plot)
             axs[1].set_axis_off()
             axs[1].invert_yaxis()
