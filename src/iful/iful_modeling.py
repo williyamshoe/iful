@@ -8,7 +8,7 @@ from scipy.stats import norm
 from scipy.optimize import minimize
 import lenstronomy.Util.class_creator as class_creator
 from lenstronomy.Util import param_util
-from vorbin.voronoi_2d_binning import voronoi_2d_binning
+from powerbin import PowerBin
 from tqdm import tqdm
 import astropy.units as u
 from astropy.cosmology import FlatLambdaCDM
@@ -214,21 +214,23 @@ class IFULModel:
         self.dpix = dpix
 
     def voronoi_given_nbins(self, target_y, low, high, kwargs_source, source_fluxes_arg, epsilon=1e-7):
+        xy = np.column_stack((self.pixel_locations.T[1], self.pixel_locations.T[0]))
+
+        def capacity_spec(index):
+            sn = np.sum(source_fluxes_arg[index]) / np.sqrt(len(index))
+            return sn**2
+
         while (high - low) > epsilon:
             mid = low + (high - low) / 2.0
-            bin_number, y_gen, x_gen, y_bar, x_bar, sn, nPixels, scale = (
-                voronoi_2d_binning(
-                    self.pixel_locations.T[1],
-                    self.pixel_locations.T[0],
-                    source_fluxes_arg,
-                    np.ones(source_fluxes_arg.shape),
-                    mid,
-                    pixelsize=None,
-                    plot=False,
-                    quiet=True,
-                )
+            pow_bin = PowerBin(
+                xy,
+                capacity_spec,
+                target_capacity=mid**2,
+                pixelsize=None,
+                verbose=0,
+                regul=True,
             )
-            mid_y = len(y_gen)
+            mid_y = len(pow_bin.xybin)
             if mid_y == target_y:
                 break
             elif mid_y < target_y:
@@ -236,16 +238,24 @@ class IFULModel:
             else:
                 low = mid
 
-        bin_number, y_gen, x_gen, y_bar, x_bar, sn, nPixels, scale = voronoi_2d_binning(
-            self.pixel_locations.T[1],
-            self.pixel_locations.T[0],
-            source_fluxes_arg,
-            np.ones(source_fluxes_arg.shape),
-            mid,
+        pow_bin = PowerBin(
+            xy,
+            capacity_spec,
+            target_capacity=mid**2,
             pixelsize=None,
-            plot=True,
-            quiet=True,
+            verbose=0,
+            regul=True,
         )
+        pow_bin.plot(capacity_scale='sqrt')
+
+        bin_number = pow_bin.bin_num
+        y_gen = pow_bin.xybin[:, 0]
+        x_gen = pow_bin.xybin[:, 1]
+        y_bar = pow_bin.xybin[:, 0]
+        x_bar = pow_bin.xybin[:, 1]
+        sn = np.sqrt(pow_bin.bin_capacity)
+        nPixels = pow_bin.npix
+        scale = None
 
         self.init_bin_sourceflux = self.sm_init._light_model.surface_brightness(
             self.sourcecenter[0] + (x_bar - self.sourceplane_size // 2) * self.dpix,
@@ -321,6 +331,7 @@ class IFULModel:
             v_disp_params = all_fitted_params[-1 * (self.flx_numparams + self.v_disp_numparams) : -1 * self.flx_numparams]
             flx_params_base = list(all_fitted_params[-1 * self.flx_numparams :])
             num_linparam = 0
+            flx_params = np.array(flx_params_base)
 
         kwargs_lenstronomy = self.init_fitting_seq.param_class.args2kwargs(lens_model_params)
         kwargs_lenstronomy.pop("kwargs_tracer_source", None)
