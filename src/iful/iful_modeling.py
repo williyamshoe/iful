@@ -741,6 +741,10 @@ class IFULModel:
             return self.get_constant_v_given_xy_bin, 1
         elif profile_name == "CONSTANT_FITTED_BH":
             return self.get_constant_bh_v_given_xy_bin, 2
+        elif profile_name == "TANH":
+            return self.get_tanh_v_given_xy_bin, 4
+        elif profile_name == "MULTIPARAM":
+            return self.get_multiparam_v_given_xy_bin, 6
         elif profile_name.startswith("SHAPELETS"):
             try:
                 n_max = int(profile_name.split("_")[1])
@@ -774,6 +778,34 @@ class IFULModel:
         c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
 
         return np.array([arctan_2d(v_pa, v_a, v_b, v_c, c_x, c_y, xp, yp) for xp, yp in zip(x, y)])
+
+    @staticmethod
+    def get_tanh_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
+        # fitted_params: [v_pa, v_a, v_b, v_c]
+
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+
+        kwargs_source = aux_params[0]
+        v_pa, v_a, v_b, v_c = fitted_params
+        c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
+
+        return np.array([tanh_2d(v_pa, v_a, v_b, v_c, c_x, c_y, xp, yp) for xp, yp in zip(x, y)])
+
+    @staticmethod
+    def get_multiparam_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        # aux_params: [kwargs_source, sm, constant_val, d_s]
+        # fitted_params: [v_pa, v_a, v_b, v_beta, v_xi, v_c]
+
+        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
+        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+
+        kwargs_source = aux_params[0]
+        v_pa, v_a, v_b, v_beta, v_xi, v_c = fitted_params
+        c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
+
+        return np.array([multiparam_2d(v_pa, v_a, v_b, v_beta, v_xi, v_c, c_x, c_y, xp, yp) for xp, yp in zip(x, y)])
 
     @staticmethod
     def get_sersic_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
@@ -872,7 +904,8 @@ class IFULModel:
 
         G = 4.30241e-6 # in units of (km/s)^2 kpc/M_sol
         d_s = aux_params[3]
-        dist = ((x - kwargs_source[0]["center_x"])**2 + (y - kwargs_source[0]["center_y"])**2) ** 0.5
+        epsilon = 1e-5
+        dist = (((x - kwargs_source[0]["center_x"])**2 + (y - kwargs_source[0]["center_y"])**2) + epsilon**2) ** 0.5
         vd_bh_srd = (G*(10**lg_bh_mass)/(dist/206265*d_s))
 
         return (vd_power**2 + vd_bh_srd)**0.5
@@ -901,14 +934,17 @@ class IFULModel:
         y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
 
         kwargs_source = aux_params[0]
-        const_val, lg_bh_mass = fitted_params
 
         if len(fitted_params) == 1:
+            lg_bh_mass = fitted_params[0]
             const_val = aux_params[2]
+        else:
+            const_val, lg_bh_mass = fitted_params
 
         G = 4.30241e-6 # in units of (km/s)^2 kpc/M_sol
         d_s = aux_params[3]
-        dist = ((x - kwargs_source[0]["center_x"])**2 + (y - kwargs_source[0]["center_y"])**2) ** 0.5
+        epsilon = 1e-5
+        dist = (((x - kwargs_source[0]["center_x"])**2 + (y - kwargs_source[0]["center_y"])**2) + epsilon**2) ** 0.5
         vd_bh_srd = (G*(10**lg_bh_mass)/(dist/206265*d_s))
 
         vd_const = np.ones(len(x)) * const_val

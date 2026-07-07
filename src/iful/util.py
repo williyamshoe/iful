@@ -57,6 +57,30 @@ def arctan_2d(PA, A, B, C, c0, c1, r0, r1):
     return arctan_1d(A, B, r) + C
 
 
+def tanh_1d(A, B, r):
+    B_safe = 1e-10 if B == 0 else B
+    return A * np.tanh(r / B_safe)
+
+
+def tanh_2d(PA, A, B, C, c0, c1, r0, r1):
+    r = distance_to_line((r0, r1), (c0, c1), PA)
+    return tanh_1d(A, B, r) + C
+
+
+def multiparam_1d(Vt, Rt, beta, xi, r):
+    R = np.abs(r)
+    R_safe = np.where(R == 0, 1e-10, R)
+    xi_safe = 1e-10 if xi == 0 else xi
+    val = Vt * ((1.0 + Rt / R_safe) ** beta) / ((1.0 + (Rt / R_safe) ** xi_safe) ** (1.0 / xi_safe))
+    val = np.where(R == 0, 0.0, val)
+    return np.sign(r) * val
+
+
+def multiparam_2d(PA, Vt, Rt, beta, xi, C, c0, c1, r0, r1):
+    r = distance_to_line((r0, r1), (c0, c1), PA)
+    return multiparam_1d(Vt, Rt, beta, xi, r) + C
+
+
 def create_gif(image_paths, output_gif_path, duration=300, loop=0):
     images = [Image.open(image_path) for image_path in image_paths]
     images[0].save(
