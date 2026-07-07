@@ -299,7 +299,7 @@ class IFULModel:
             return res, dists
         return res
 
-    def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False, vd_plots=False):
+    def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False, vd_plots=False, trim_vd_plot=0):
         assert self.get_num_free_params(linear_solve=linear_solve) == len(all_fitted_params)
 
         lens_model_params = all_fitted_params[: self.len_model_numparams]
@@ -347,12 +347,9 @@ class IFULModel:
         aux_params = [kwargs_lenstronomy["kwargs_source"], sm, self.constant_val, self.d_s]
 
         c = 299792
-        z_los = (
-            self.v_los_fnc(
-                x_source_vals, y_source_vals, binno, aux_params, v_los_params
-            )
-            / c
-        )
+        z_los = self.v_los_fnc(
+            x_source_vals, y_source_vals, binno, aux_params, v_los_params
+        ) / c
         v_disp = self.v_disp_fnc(
             x_source_vals, y_source_vals, binno, aux_params, v_disp_params
         )
@@ -462,11 +459,18 @@ class IFULModel:
                     lensed_diag_imgs[:, 1]/magn, unconvolved=False
                 )
             ]
+            vd_flat = lensed_diag_imgs[:, 2]
+            vd_flat = np.array([v if v<np.percentile(vd_flat, 99.99) else np.mean(vd_flat) for v in vd_flat])
             diag_plots += [
                 immodel.ImageNumerics.re_size_convolve(
-                    lensed_diag_imgs[:, 2]**2/magn, unconvolved=False
+                    vd_flat**2/magn, unconvolved=False
                 )**0.5
             ]
+            # diag_plots += [
+            #     immodel.ImageNumerics.re_size_convolve(
+            #         lensed_diag_imgs[:, 2]/magn, unconvolved=False
+            #     )
+            # ]
             diag_plots = np.array(diag_plots)
 
             # binary_mask = np.where(np.sum(model_datacube, axis=0) > , 1.0, np.nan)
@@ -479,10 +483,13 @@ class IFULModel:
             fig.colorbar(col, ax=axs[0], label="LOS (convolved)")
 
             vd_plot = diag_plots[1, :, :]
-            vd_plot[:3, :] = np.nan
-            vd_plot[-3:, :] = np.nan
-            vd_plot[:, :3] = np.nan
-            vd_plot[:, -3:] = np.nan
+
+            if trim_vd_plot > 0:
+                vd_plot[:trim_vd_plot, :] = np.nan
+                vd_plot[-trim_vd_plot:, :] = np.nan
+                vd_plot[:, :trim_vd_plot] = np.nan
+                vd_plot[:, -trim_vd_plot:] = np.nan
+                
             col = axs[1].imshow(vd_plot)
             axs[1].set_axis_off()
             axs[1].invert_yaxis()
