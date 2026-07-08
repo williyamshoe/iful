@@ -375,14 +375,26 @@ class IFULModel:
         # ==========================================
         
         if linear_solve:
-            unit_source_light = np.array(
-                [
-                    np.zeros(self.imset.wavelength.shape)
-                    if np.sum(np.isnan([z, sigma_ang, 1.0])) > 0
-                    else self.imset.gen_2d_spec_fixratios([z, sigma_ang, 1.0])
-                    for z, sigma_ang in zip(z_los, sigma_total)
-                ]
-            )
+            # Vectorized unit_source_light calculation
+            w = self.imset.wavelength
+            rp = np.array(self.imset.restwave_peaks)
+            ratios_f = np.array([1] + list(self.imset.init_spec_fit[3:]))
+
+            z_grid = z_los[:, np.newaxis, np.newaxis]
+            sig_grid = sigma_total[:, np.newaxis, np.newaxis]
+            w_grid = w[np.newaxis, :, np.newaxis]
+            rp_grid = rp[np.newaxis, np.newaxis, :]
+            ratio_grid = ratios_f[np.newaxis, np.newaxis, :]
+
+            mu = rp_grid * (1.0 + z_grid)
+            diff = w_grid - mu
+            sig_grid_safe = np.where(sig_grid <= 0, 1.0, sig_grid)
+            diff_sig = diff / sig_grid_safe
+            gauss = ratio_grid * np.exp(-0.5 * diff_sig**2)
+            unit_source_light = np.sum(gauss, axis=2)
+
+            nan_mask = np.isnan(z_los) | np.isnan(sigma_total) | (sigma_total <= 0)
+            unit_source_light[nan_mask] = 0.0
 
             mask_bool = self.datacube_mask.astype(bool)
             valid_pixels = mask_bool # Keeping your custom masking rule
@@ -420,7 +432,16 @@ class IFULModel:
                 if k % 10 == 0:
                     gc.collect()
             
-            flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
+            try:
+                # Cholesky NNLS for extreme speedup on large matrices
+                C = A_matrix.T @ A_matrix
+                C.flat[::num_linparam + 1] += 1e-12
+                v = A_matrix.T @ b_data
+                R = sp.linalg.cholesky(C, lower=False)
+                d = sp.linalg.solve_triangular(R, v, trans='T', lower=False)
+                flx_params, _ = sp.optimize.nnls(R, d)
+            except sp.linalg.LinAlgError:
+                flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
             flx_params = np.array(list(flx_params_base) + list(flx_params))
             
             # Clean up the large matrix right after solving
@@ -433,14 +454,27 @@ class IFULModel:
         # ==========================================
         flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, flx_params)
 
-        source_light = np.array(
-            [
-                np.zeros(self.imset.wavelength.shape)
-                if np.any(np.isnan([z, sigma_ang, flx]))
-                else self.imset.gen_2d_spec_fixratios([z, sigma_ang, flx])
-                for z, sigma_ang, flx in zip(z_los, sigma_total, flxs)
-            ]
-        )
+        # Vectorized source_light calculation
+        w = self.imset.wavelength
+        rp = np.array(self.imset.restwave_peaks)
+        ratios_f = np.array([1] + list(self.imset.init_spec_fit[3:]))
+
+        z_grid = z_los[:, np.newaxis, np.newaxis]
+        sig_grid = sigma_total[:, np.newaxis, np.newaxis]
+        w_grid = w[np.newaxis, :, np.newaxis]
+        rp_grid = rp[np.newaxis, np.newaxis, :]
+        ratio_grid = ratios_f[np.newaxis, np.newaxis, :]
+        flx_grid = flxs[:, np.newaxis, np.newaxis]
+
+        mu = rp_grid * (1.0 + z_grid)
+        diff = w_grid - mu
+        sig_grid_safe = np.where(sig_grid <= 0, 1.0, sig_grid)
+        diff_sig = diff / sig_grid_safe
+        gauss = flx_grid * ratio_grid * np.exp(-0.5 * diff_sig**2)
+        source_light = np.sum(gauss, axis=2)
+
+        nan_mask = np.isnan(z_los) | np.isnan(sigma_total) | np.isnan(flxs) | (sigma_total <= 0)
+        source_light[nan_mask] = 0.0
 
         model_datacube = []
         for ii in np.arange(source_light.shape[1]):
@@ -606,7 +640,16 @@ class IFULModel:
                 if k % 10 == 0:
                     gc.collect()
             
-            flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
+            try:
+                # Cholesky NNLS for extreme speedup on large matrices
+                C = A_matrix.T @ A_matrix
+                C.flat[::num_linparam + 1] += 1e-12
+                v = A_matrix.T @ b_data
+                R = sp.linalg.cholesky(C, lower=False)
+                d = sp.linalg.solve_triangular(R, v, trans='T', lower=False)
+                flx_params, _ = sp.optimize.nnls(R, d)
+            except sp.linalg.LinAlgError:
+                flx_params, _ = sp.optimize.nnls(A_matrix, b_data)
             flx_params = np.array(list(flx_params_base) + list(flx_params))
             
             # Clean up the large matrix right after solving
@@ -696,6 +739,10 @@ class IFULModel:
                     v_los_img[ix, iy] = np.nan
                     v_disp_img[ix, iy] = np.nan
                     flxs_img[ix, iy] = np.nan
+                elif v_disp > 500:
+                    v_los_img[ix, iy] = v_los
+                    v_disp_img[ix, iy] = np.nan
+                    flxs_img[ix, iy] = flxs
                 else:
                     v_los_img[ix, iy] = v_los
                     v_disp_img[ix, iy] = v_disp
@@ -710,6 +757,10 @@ class IFULModel:
 
         cmap = cm.get_cmap('viridis').copy()
         cmap.set_bad(color='black')
+
+        # flat_idx = np.argsort(v_disp_img, axis=None)[-1:]
+        # row_idx, col_idx = np.unravel_index(flat_idx, v_disp_img.shape)
+        # v_disp_img[row_idx, col_idx] = np.nan
 
         col = axs[1].imshow(v_disp_img, cmap=cmap)
         axs[1].invert_yaxis()
@@ -760,52 +811,54 @@ class IFULModel:
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: list same len of num of bins
 
-        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
-        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
-
-        return np.array([0.0 if np.isnan(b) else fitted_params[int(b)] for b in binno])
+        binno = np.asarray(binno)
+        fitted_params = np.asarray(fitted_params)
+        res = np.zeros_like(binno)
+        nan_mask = np.isnan(binno)
+        res[~nan_mask] = fitted_params[binno[~nan_mask].astype(int)]
+        return res
 
     @staticmethod
     def get_arctan_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [v_pa, v_a, v_b, v_c]
 
-        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
-        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+        x = np.asarray(x)
+        y = np.asarray(y)
 
         kwargs_source = aux_params[0]
         v_pa, v_a, v_b, v_c = fitted_params
         c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
 
-        return np.array([arctan_2d(v_pa, v_a, v_b, v_c, c_x, c_y, xp, yp) for xp, yp in zip(x, y)])
+        return arctan_2d(v_pa, v_a, v_b, v_c, c_x, c_y, x, y)
 
     @staticmethod
     def get_tanh_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [v_pa, v_a, v_b, v_c]
 
-        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
-        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+        x = np.asarray(x)
+        y = np.asarray(y)
 
         kwargs_source = aux_params[0]
         v_pa, v_a, v_b, v_c = fitted_params
         c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
 
-        return np.array([tanh_2d(v_pa, v_a, v_b, v_c, c_x, c_y, xp, yp) for xp, yp in zip(x, y)])
+        return tanh_2d(v_pa, v_a, v_b, v_c, c_x, c_y, x, y)
 
     @staticmethod
     def get_multiparam_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [v_pa, v_a, v_b, v_beta, v_xi, v_c]
 
-        x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
-        y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
+        x = np.asarray(x)
+        y = np.asarray(y)
 
         kwargs_source = aux_params[0]
         v_pa, v_a, v_b, v_beta, v_xi, v_c = fitted_params
         c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
 
-        return np.array([multiparam_2d(v_pa, v_a, v_b, v_beta, v_xi, v_c, c_x, c_y, xp, yp) for xp, yp in zip(x, y)])
+        return multiparam_2d(v_pa, v_a, v_b, v_beta, v_xi, v_c, c_x, c_y, x, y)
 
     @staticmethod
     def get_sersic_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
