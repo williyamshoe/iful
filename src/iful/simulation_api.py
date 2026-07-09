@@ -150,7 +150,7 @@ def run_galaxy_simulation(ifulmodel, sim_params):
     """
     lens_model_params = sim_params[: ifulmodel.len_model_numparams]
     kwargs_lenstronomy = ifulmodel.init_fitting_seq.param_class.args2kwargs(lens_model_params)
-    immodel = ifulmodel.immodel_init._imageModel_list[0]
+    immodel = (ifulmodel.immodel_init._imageModel_list if hasattr(ifulmodel.immodel_init, "_imageModel_list") else ifulmodel.immodel_init._image_model_list)[0]
 
     # Calculate critical curves and caustics
     lens_model = LensModel(lens_model_list=["EPL_Q_PHI", "SHEAR"])
