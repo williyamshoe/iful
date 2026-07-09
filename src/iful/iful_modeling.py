@@ -74,7 +74,7 @@ class IFULModel:
         self.immodel_init.image_linear_solve(inv_bool=True, **kwargs_params)
 
         # immodel_init = immodel_init._imageModel_list[0]
-        self.sm_init = self.immodel_init._imageModel_list[0].source_mapping
+        self.sm_init = (self.immodel_init._imageModel_list if hasattr(self.immodel_init, "_imageModel_list") else self.immodel_init._image_model_list)[0].source_mapping
 
         self.get_sourceplane_img(flatmodel)
 
@@ -123,7 +123,7 @@ class IFULModel:
             **flatmodel.init_pso_fit
         )
 
-        ra_grid, dec_grid = self.immodel_init._imageModel_list[
+        ra_grid, dec_grid = (self.immodel_init._imageModel_list if hasattr(self.immodel_init, "_imageModel_list") else self.immodel_init._image_model_list)[
             0
         ].ImageNumerics.coordinates_evaluate
         self.init_x_source_vals, self.init_y_source_vals = (
@@ -339,14 +339,14 @@ class IFULModel:
         if np.any((np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2 > 1e-8):
             immodel = copy.deepcopy(self.imModel_classcreator)
             immodel.image_linear_solve(inv_bool=True, **kwargs_lenstronomy)
-            immodel = immodel._imageModel_list[0]
+            immodel = (immodel._imageModel_list if hasattr(immodel, "_imageModel_list") else immodel._image_model_list)[0]
 
             sm = immodel.source_mapping
             ra_grid, dec_grid = immodel.ImageNumerics.coordinates_evaluate
             x_source_vals, y_source_vals = sm._lens_model.ray_shooting(ra_grid, dec_grid, kwargs_lenstronomy["kwargs_lens"])
 
         else:
-            immodel = self.immodel_init._imageModel_list[0]
+            immodel = (self.immodel_init._imageModel_list if hasattr(self.immodel_init, "_imageModel_list") else self.immodel_init._image_model_list)[0]
             x_source_vals, y_source_vals = (self.init_x_source_vals, self.init_y_source_vals,)
             sm = self.sm_init
 
@@ -373,6 +373,17 @@ class IFULModel:
         # ==========================================
         # LINEAR INVERSION BLOCK
         # ==========================================
+        if hasattr(self.imset, "var_datacube") and self.imset.var_datacube is not None:
+            exptime = self.imset.aux_info.get("exptime", 1.0)
+            poisson_obs = np.maximum(self.obs_datacube, 0.0) / exptime
+            datacube_variance_linear = np.transpose(self.imset.var_datacube, (2, 0, 1)) + poisson_obs
+            datacube_variance_linear = np.where(
+                np.isnan(datacube_variance_linear) | (datacube_variance_linear <= 0),
+                1e10,
+                datacube_variance_linear
+            )
+        else:
+            datacube_variance_linear = self.datacube_unc
         
         if linear_solve:
             # Vectorized unit_source_light calculation
@@ -403,8 +414,12 @@ class IFULModel:
             num_valid_pixels = np.sum(valid_pixels)
             
             # Cast W and b_data down to 32-bit floats
-            W = (1.0 / np.sqrt(self.datacube_unc)).astype(np.float32)
-            b_data = (self.obs_datacube[valid_pixels] * W).astype(np.float32)
+            if isinstance(datacube_variance_linear, np.ndarray):
+                W = (1.0 / np.sqrt(datacube_variance_linear)).astype(np.float32)
+                b_data = (self.obs_datacube[valid_pixels] * W[valid_pixels]).astype(np.float32)
+            else:
+                W = (1.0 / np.sqrt(datacube_variance_linear)).astype(np.float32)
+                b_data = (self.obs_datacube[valid_pixels] * W).astype(np.float32)
 
             # Pre-allocate A_matrix as a 32-bit float array
             A_matrix = np.empty((num_valid_pixels, num_linparam), dtype=np.float32)
@@ -424,7 +439,10 @@ class IFULModel:
                     )
                 
                 # Assign directly to pre-allocated matrix and ensure it's a 32-bit float
-                A_matrix[:, k] = (basis_datacube[valid_pixels] * W).astype(np.float32)
+                if isinstance(datacube_variance_linear, np.ndarray):
+                    A_matrix[:, k] = (basis_datacube[valid_pixels] * W[valid_pixels]).astype(np.float32)
+                else:
+                    A_matrix[:, k] = (basis_datacube[valid_pixels] * W).astype(np.float32)
                 
                 # Aggressive memory cleanup
                 del basis_source_light
@@ -485,8 +503,21 @@ class IFULModel:
             ]
         model_datacube = np.array(model_datacube)
 
+        if hasattr(self.imset, "var_datacube") and self.imset.var_datacube is not None:
+            exptime = self.imset.aux_info.get("exptime", 1.0)
+            poisson_model = np.maximum(model_datacube, 0.0) / exptime
+            datacube_variance_final = np.transpose(self.imset.var_datacube, (2, 0, 1)) + poisson_model
+            datacube_variance_final = np.where(
+                np.isnan(datacube_variance_final) | (datacube_variance_final <= 0),
+                1e10,
+                datacube_variance_final
+            )
+            self.datacube_unc = np.sqrt(datacube_variance_final)
+        else:
+            datacube_variance_final = self.datacube_unc
+
         res = np.nansum(
-            ((model_datacube - self.obs_datacube) ** 2 / self.datacube_unc) 
+            ((model_datacube - self.obs_datacube) ** 2 / datacube_variance_final) 
             * self.datacube_mask
         )
 
@@ -581,14 +612,14 @@ class IFULModel:
         if np.any((np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2 > 1e-8):
             immodel = copy.deepcopy(self.imModel_classcreator)
             immodel.image_linear_solve(inv_bool=True, **kwargs_lenstronomy)
-            immodel = immodel._imageModel_list[0]
+            immodel = (immodel._imageModel_list if hasattr(immodel, "_imageModel_list") else immodel._image_model_list)[0]
 
             sm = immodel.source_mapping
             ra_grid, dec_grid = immodel.ImageNumerics.coordinates_evaluate
             x_source_vals, y_source_vals = sm._lens_model.ray_shooting(ra_grid, dec_grid, kwargs_lenstronomy["kwargs_lens"])
 
         else:
-            immodel = self.immodel_init._imageModel_list[0]
+            immodel = (self.immodel_init._imageModel_list if hasattr(self.immodel_init, "_imageModel_list") else self.immodel_init._image_model_list)[0]
             x_source_vals, y_source_vals = (self.init_x_source_vals, self.init_y_source_vals,)
             sm = self.sm_init
 
@@ -703,10 +734,10 @@ class IFULModel:
         if np.any((np.array(self.init_lenstronomy_args) - np.array(lens_model_params)) ** 2 > 1e-8):
             immodel = copy.deepcopy(self.imModel_classcreator)
             immodel.image_linear_solve(inv_bool=True, **kwargs_lenstronomy)
-            immodel = immodel._imageModel_list[0]
+            immodel = (immodel._imageModel_list if hasattr(immodel, "_imageModel_list") else immodel._image_model_list)[0]
             sm = immodel.source_mapping
         else:
-            immodel = self.immodel_init._imageModel_list[0]
+            immodel = (self.immodel_init._imageModel_list if hasattr(self.immodel_init, "_imageModel_list") else self.immodel_init._image_model_list)[0]
             sm = self.sm_init
 
         # c = 299792
