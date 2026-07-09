@@ -119,7 +119,7 @@ class IFULModel:
         
         exptime = self.imset.aux_info.get("exptime", 1.0)
         poisson_obs = np.maximum(self.obs_datacube, 0.0) / exptime
-        datacube_variance = (self.imset.brms_2d)**2 + (poisson_obs)
+        datacube_variance = (self.imset.brms_3d)**2 + (poisson_obs)
         datacube_variance = np.where(
             np.isnan(datacube_variance) | (datacube_variance <= 0),
             1e10,
