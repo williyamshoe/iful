@@ -114,9 +114,19 @@ class IFULModel:
         )
 
         self.obs_datacube = np.transpose(self.imset.datacube, (2, 0, 1))
-        # self.var_datacube = np.transpose(self.imset.var_datacube, (2, 0, 1))
+
         self.datacube_mask = np.transpose(self.imset.mask_3d, (2, 0, 1))
-        self.datacube_unc = self.imset.brms_3d
+        
+        exptime = self.imset.aux_info.get("exptime", 1.0)
+        poisson_obs = np.maximum(self.obs_datacube, 0.0) / exptime
+        datacube_variance = (self.imset.brms_2d)**2 + (poisson_obs)
+        datacube_variance = np.where(
+            np.isnan(datacube_variance) | (datacube_variance <= 0),
+            1e10,
+            datacube_variance
+        )
+        self.datacube_unc = np.sqrt(datacube_variance)
+
         self.central_wave = np.mean(self.imset.wavelength)
 
         self.init_lenstronomy_args = self.init_fitting_seq.param_class.kwargs2args(
@@ -373,18 +383,6 @@ class IFULModel:
         # ==========================================
         # LINEAR INVERSION BLOCK
         # ==========================================
-        if hasattr(self.imset, "var_datacube") and self.imset.var_datacube is not None:
-            exptime = self.imset.aux_info.get("exptime", 1.0)
-            poisson_obs = np.maximum(self.obs_datacube, 0.0) / exptime
-            datacube_variance_linear = np.transpose(self.imset.var_datacube, (2, 0, 1)) + poisson_obs
-            datacube_variance_linear = np.where(
-                np.isnan(datacube_variance_linear) | (datacube_variance_linear <= 0),
-                1e10,
-                datacube_variance_linear
-            )
-        else:
-            datacube_variance_linear = self.datacube_unc
-        
         if linear_solve:
             # Vectorized unit_source_light calculation
             w = self.imset.wavelength
@@ -414,11 +412,11 @@ class IFULModel:
             num_valid_pixels = np.sum(valid_pixels)
             
             # Cast W and b_data down to 32-bit floats
-            if isinstance(datacube_variance_linear, np.ndarray):
-                W = (1.0 / np.sqrt(datacube_variance_linear)).astype(np.float32)
+            if isinstance(self.datacube_unc, np.ndarray):
+                W = (1.0 / self.datacube_unc).astype(np.float32)
                 b_data = (self.obs_datacube[valid_pixels] * W[valid_pixels]).astype(np.float32)
             else:
-                W = (1.0 / np.sqrt(datacube_variance_linear)).astype(np.float32)
+                W = (1.0 / self.datacube_unc).astype(np.float32)
                 b_data = (self.obs_datacube[valid_pixels] * W).astype(np.float32)
 
             # Pre-allocate A_matrix as a 32-bit float array
@@ -439,7 +437,7 @@ class IFULModel:
                     )
                 
                 # Assign directly to pre-allocated matrix and ensure it's a 32-bit float
-                if isinstance(datacube_variance_linear, np.ndarray):
+                if isinstance(self.datacube_unc, np.ndarray):
                     A_matrix[:, k] = (basis_datacube[valid_pixels] * W[valid_pixels]).astype(np.float32)
                 else:
                     A_matrix[:, k] = (basis_datacube[valid_pixels] * W).astype(np.float32)
@@ -503,21 +501,8 @@ class IFULModel:
             ]
         model_datacube = np.array(model_datacube)
 
-        if hasattr(self.imset, "var_datacube") and self.imset.var_datacube is not None:
-            exptime = self.imset.aux_info.get("exptime", 1.0)
-            poisson_model = np.maximum(model_datacube, 0.0) / exptime
-            datacube_variance_final = np.transpose(self.imset.var_datacube, (2, 0, 1)) + poisson_model
-            datacube_variance_final = np.where(
-                np.isnan(datacube_variance_final) | (datacube_variance_final <= 0),
-                1e10,
-                datacube_variance_final
-            )
-            self.datacube_unc = np.sqrt(datacube_variance_final)
-        else:
-            datacube_variance_final = self.datacube_unc
-
         res = np.nansum(
-            ((model_datacube - self.obs_datacube) ** 2 / datacube_variance_final) 
+            ((model_datacube - self.obs_datacube) ** 2 / self.datacube_unc**2) 
             * self.datacube_mask
         )
 
