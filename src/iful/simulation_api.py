@@ -18,20 +18,20 @@ class SimulationMockImageSet(ImageSet):
     """
     Mock ImageSet configured for JWST NIRSpec G235M simulation.
     """
-    def __init__(self, psf_path="example_data/nirspec_g235m_psf.npy", size=40, pixscale_arcsec=0.075):
-        self.zs = 3.8
+    def __init__(self, size, pixscale_arcsec, zs, wavelengths_full, psf_path):
+        self.zs = zs
         self.size = size
         self.pixscale = pixscale_arcsec / 3600.0  # Pixel scale in degrees/pixel
         
-        # 120 wavelength bins; after continuum subtraction, we will have 110 wavelength bins
-        self.wavelengths_full = np.linspace(23650.0 - 300, 24250.0 + 300, 120)
+        self.wavelengths_full = wavelengths_full
+        N_wave = len(wavelengths_full)
         self.wavelength = self.wavelengths_full[5:-5]
-        datacube = np.zeros((size, size, 120))
+        datacube = np.zeros((size, size, N_wave))
         
         self.continuum_subtraction(datacube, self.wavelengths_full, 0, 5)
         
         # Overwrite datacubes with positive values to avoid all-zero fits
-        self.datacube = np.ones((size, size, 110)) * 10.0
+        self.datacube = np.ones((size, size, N_wave - 10)) * 10.0
         self.datacube_whitelight = np.ones((size, size)) * 10.0
         
         self.brms_3d = 0.01
@@ -52,7 +52,7 @@ class SimulationMockImageSet(ImageSet):
         header_wcs["CUNIT2"] = "deg"
         header_wcs["CRPIX3"] = 1.0
         header_wcs["CRVAL3"] = self.wavelengths_full[5]
-        header_wcs["CDELT3"] = 10.0
+        header_wcs["CDELT3"] = self.wavelengths_full[1] - self.wavelengths_full[0]
         header_wcs["CUNIT3"] = "Angstrom"
         
         self.aux_info = {
@@ -65,7 +65,7 @@ class SimulationMockImageSet(ImageSet):
         self.img_locations = np.array([])
 
 
-def create_simulation_models(imset, theta_E=0.8, source_x=0.09, source_y=0.09):
+def create_simulation_models(imset, theta_E=0.8, source_x=0.09, source_y=0.09, iful_profiles=None):
     """
     Initializes and configures the FlatModel and IFULModel instances for the simulation.
     """
@@ -131,7 +131,8 @@ def create_simulation_models(imset, theta_E=0.8, source_x=0.09, source_y=0.09):
     }
 
     # Setup IFULModel
-    iful_profiles = ["ARCTAN", "CONSTANT_FITTED_BH", "SERSIC"]
+    if iful_profiles is None:
+        iful_profiles = ["ARCTAN", "CONSTANT_FITTED_BH", "SERSIC"]
     d_s = FlatLambdaCDM(H0=70, Om0=0.3).angular_diameter_distance(imset.zs).to(u.kpc).value
 
     ifulmodel = IFULModel(
@@ -143,7 +144,7 @@ def create_simulation_models(imset, theta_E=0.8, source_x=0.09, source_y=0.09):
     return fm, ifulmodel
 
 
-def run_galaxy_simulation(ifulmodel, sim_params):
+def run_galaxy_simulation(ifulmodel, sim_params, compute_window=3, grid_scale=0.01, source_grid_size=100, source_grid_scale=0.015):
     """
     Evaluates the lensing configuration and returns the lensed image, unlensed source,
     and caustic/critical curve coordinates.
@@ -156,13 +157,13 @@ def run_galaxy_simulation(ifulmodel, sim_params):
     lens_model = LensModel(lens_model_list=["EPL_Q_PHI", "SHEAR"])
     lens_model_ext = LensModelExtensions(lens_model)
     ra_crit, dec_crit, ra_caustic, dec_caustic = lens_model_ext.critical_curve_caustics(
-        kwargs_lenstronomy["kwargs_lens"], compute_window=3, grid_scale=0.01
+        kwargs_lenstronomy["kwargs_lens"], compute_window=compute_window, grid_scale=grid_scale
     )
 
     # Evaluate unlensed source plane surface brightness
     x_grid_source, y_grid_source = np.meshgrid(
-        (np.arange(100) - 50) * 0.015,
-        (np.arange(100) - 50) * 0.015
+        (np.arange(source_grid_size) - source_grid_size / 2.0) * source_grid_scale,
+        (np.arange(source_grid_size) - source_grid_size / 2.0) * source_grid_scale
     )
     unlensed_source = ifulmodel.sm_init._light_model.surface_brightness(
         x_grid_source, y_grid_source, kwargs_lenstronomy["kwargs_source"]
@@ -189,7 +190,7 @@ def add_instrument_noise(datacube, bg_noise_std_frac=0.02, seed=42):
     return noisy_datacube, bg_noise
 
 
-def export_to_fits(filename, datacube_noisy, wavelengths_full, header_wcs, redshift=3.8, exptime=1000.0):
+def export_to_fits(filename, datacube_noisy, wavelengths_full, header_wcs, redshift=3.8, exptime=1000.0, comment=None):
     """
     Saves the simulated datacube to a FITS file with proper WCS headers.
     """
@@ -202,7 +203,9 @@ def export_to_fits(filename, datacube_noisy, wavelengths_full, header_wcs, redsh
             
     hdu.header["EXPTIME"] = exptime
     hdu.header["REDSHIFT"] = redshift
-    hdu.header["COMMENT"] = "Simulated noisy lensed galaxy [OIII] 4959 and 5007 doublet NIRSPEC G235M datacube"
+    if comment is None:
+        comment = "Simulated noisy lensed galaxy datacube"
+    hdu.header["COMMENT"] = comment
     
     # Save to FITS
     hdu.writeto(filename, overwrite=True)
