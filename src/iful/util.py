@@ -92,36 +92,58 @@ def create_gif(image_paths, output_gif_path, duration=300, loop=0):
     )
 
 
-def gen_gif(data_datacube, model_datacube, var_datacube, mask_3d, waves, name, overwrite=True):
+def gen_gif(data_datacube, model_datacube, var_datacube, mask_3d, waves, name, overwrite=True, pixscale=None):
     if os.path.isfile(name) and overwrite==False:
         return
     os.system("mkdir temp")
+    
+    if pixscale is not None:
+        if pixscale < 1e-3:
+            pixscale_arcsec = pixscale * 3600.0
+        else:
+            pixscale_arcsec = pixscale
+        N_x, N_y = data_datacube.shape[1], data_datacube.shape[2]
+        half_x = (N_x / 2.0) * pixscale_arcsec
+        half_y = (N_y / 2.0) * pixscale_arcsec
+        extent = [half_x, -half_x, -half_y, half_y]
+        xlabel = "RA offset (arcsec)"
+        ylabel = "DEC offset (arcsec)"
+    else:
+        extent = None
+        xlabel = "Relative RA (pixels)"
+        ylabel = "Relative DEC (pixels)"
+        
     imfiles = []
     for i, _ in enumerate(waves):
-        plt.figure(figsize=(12, 4))
+        plt.figure(figsize=(13.5, 4))
 
         plt.subplot(1, 3, 1)
-        plt.imshow((data_datacube * mask_3d)[i, :, :], vmin=0, vmax=30)
-        plt.gca().set_axis_off()
+        plt.imshow((data_datacube * mask_3d)[i, :, :], vmin=0, vmax=30, extent=extent)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.gca().invert_yaxis()
         plt.title(f"data")
 
         plt.subplot(1, 3, 2)
-        plt.imshow((model_datacube * mask_3d)[i, :, :], vmin=0, vmax=30)
-        plt.gca().set_axis_off()
+        plt.imshow((model_datacube * mask_3d)[i, :, :], vmin=0, vmax=30, extent=extent)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.gca().invert_yaxis()
         plt.title(f"{waves[i]:.2f} Å\nmodel")
 
         plt.subplot(1, 3, 3)
-        plt.imshow(
+        col = plt.imshow(
             ((data_datacube - model_datacube) * mask_3d / var_datacube**0.5)[i, :, :],
             vmin=-6,
             vmax=6,
             cmap="bwr",
+            extent=extent,
         )
-        plt.gca().set_axis_off()
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.gca().invert_yaxis()
         plt.title(r"(data-model)/$\sigma$")
+        plt.colorbar(col)
 
         plt.tight_layout()
 
@@ -370,3 +392,58 @@ def find_closest_point_indices(points, target_points, threshold=2):
         closest_indices.append(int(closest_index))
 
     return closest_indices
+
+
+def gen_obs_gif(data_datacube, mask_3d, waves, name, overwrite=True, spectrum=None, vmin=None, vmax=None, pixscale=None):
+    if os.path.isfile(name) and overwrite == False:
+        return
+    import shutil
+    if os.path.exists("temp"):
+        shutil.rmtree("temp")
+    os.makedirs("temp", exist_ok=True)
+    
+    if pixscale is not None:
+        if pixscale < 1e-3:
+            pixscale_arcsec = pixscale * 3600.0
+        else:
+            pixscale_arcsec = pixscale
+        N_x, N_y = data_datacube.shape[1], data_datacube.shape[2]
+        half_x = (N_x / 2.0) * pixscale_arcsec
+        half_y = (N_y / 2.0) * pixscale_arcsec
+        extent = [half_x, -half_x, -half_y, half_y]
+        xlabel = "RA offset (arcsec)"
+        ylabel = "DEC offset (arcsec)"
+    else:
+        extent = None
+        xlabel = "Relative RA (pixels)"
+        ylabel = "Relative DEC (pixels)"
+        
+    if spectrum is None:
+        spectrum = np.nansum(data_datacube * mask_3d, axis=(1, 2))
+    if vmin is None:
+        vmin = np.nanmin(data_datacube * mask_3d)
+    if vmax is None:
+        vmax = np.nanmax(data_datacube * mask_3d)
+    imfiles = []
+    for i, w in enumerate(waves):
+        plt.figure(figsize=(10, 4))
+        plt.subplot(1, 2, 1)
+        plt.imshow((data_datacube * mask_3d)[i, :, :], vmin=vmin, vmax=vmax, extent=extent)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.gca().invert_yaxis()
+        plt.title(f"data\n{w:.2f} Å")
+        plt.subplot(1, 2, 2)
+        plt.plot(waves, spectrum, color='blue', lw=2)
+        plt.axvline(x=w, color='red', linestyle='--', lw=1.5)
+        plt.xlabel("Wavelength (Å)")
+        plt.ylabel("Relative Amplitude")
+        plt.title("Spectrum")
+        plt.tight_layout()
+        imfile = f"temp/{i}.png"
+        plt.savefig(imfile, bbox_inches="tight")
+        plt.clf()
+        plt.close()
+        imfiles.append(imfile)
+    create_gif(imfiles, name)
+    shutil.rmtree("temp")

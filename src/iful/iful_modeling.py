@@ -536,11 +536,24 @@ class IFULModel:
 
             # binary_mask = np.where(np.sum(model_datacube, axis=0) > , 1.0, np.nan)
 
+            # Calculate physical scale and extent
+            pixscale = self.imset.pixscale
+            if pixscale < 1e-3:
+                pixscale_arcsec = pixscale * 3600.0
+            else:
+                pixscale_arcsec = pixscale
+            
+            N_x, N_y = diag_plots[0, :, :].shape
+            half_x = (N_x / 2.0) * pixscale_arcsec
+            half_y = (N_y / 2.0) * pixscale_arcsec
+            extent = [half_x, -half_x, -half_y, half_y]
+
             fig, axs = plt.subplots(1, 3, figsize=(18, 5))
             
-            col = axs[0].imshow(diag_plots[0, :, :], cmap="bwr")
-            axs[0].set_axis_off()
+            col = axs[0].imshow(diag_plots[0, :, :], cmap="bwr", extent=extent)
             axs[0].invert_yaxis()
+            axs[0].set_xlabel("RA offset (arcsecs)")
+            axs[0].set_ylabel("Dec offset (arcsecs)")
             fig.colorbar(col, ax=axs[0], label="LOS (convolved)")
 
             vd_plot = diag_plots[1, :, :]
@@ -551,14 +564,16 @@ class IFULModel:
                 vd_plot[:, :trim_vd_plot] = np.nan
                 vd_plot[:, -trim_vd_plot:] = np.nan
                 
-            col = axs[1].imshow(vd_plot)
-            axs[1].set_axis_off()
+            col = axs[1].imshow(vd_plot, extent=extent)
             axs[1].invert_yaxis()
+            axs[1].set_xlabel("RA offset (arcsecs)")
+            # axs[1].set_ylabel("Dec offset (arcsecs)")
             fig.colorbar(col, ax=axs[1], label="velocity dispersion (convolved)")
             
-            col = axs[2].imshow(np.sum(model_datacube, axis=0))
-            axs[2].set_axis_off()
+            col = axs[2].imshow(np.sum(model_datacube, axis=0), extent=extent)
             axs[2].invert_yaxis()
+            axs[2].set_xlabel("RA offset (arcsecs)")
+            # axs[2].set_ylabel("Dec offset (arcsecs)")
             fig.colorbar(col, ax=axs[2], label="flux")
         
         if return_datacube:
@@ -765,10 +780,16 @@ class IFULModel:
                     flxs_img[ix, iy] = flxs
         v_los_img -= np.nanmedian(v_los_img)
 
+        half_x = (image_size / 2.0) * dpix
+        half_y = (image_size / 2.0) * dpix
+        extent = [half_x, -half_x, -half_y, half_y]
+
         fig, axs = plt.subplots(1, 3, figsize=(18, 5))
         
-        col = axs[0].imshow(v_los_img, cmap="bwr")
+        col = axs[0].imshow(v_los_img, cmap="bwr", extent=extent)
         axs[0].invert_yaxis()
+        axs[0].set_xlabel("RA offset (arcsecs)")
+        axs[0].set_ylabel("Dec offset (arcsecs)")
         fig.colorbar(col, ax=axs[0], label="LOS Velocity [km/s]")
 
         cmap = cm.get_cmap('viridis').copy()
@@ -778,12 +799,16 @@ class IFULModel:
         # row_idx, col_idx = np.unravel_index(flat_idx, v_disp_img.shape)
         # v_disp_img[row_idx, col_idx] = np.nan
 
-        col = axs[1].imshow(v_disp_img, cmap=cmap)
+        col = axs[1].imshow(v_disp_img, cmap=cmap, extent=extent)
         axs[1].invert_yaxis()
+        axs[1].set_xlabel("RA offset (arcsecs)")
+        # axs[1].set_ylabel("Dec offset (arcsecs)")
         fig.colorbar(col, ax=axs[1], label="Velocity dispersion [km/s]")
 
-        col = axs[2].imshow(np.log10(flxs_img), cmap=cmap)
+        col = axs[2].imshow(np.log10(flxs_img), cmap=cmap, extent=extent)
         axs[2].invert_yaxis()
+        axs[2].set_xlabel("RA offset (arcsecs)")
+        # axs[2].set_ylabel("Dec offset (arcsecs)")
         fig.colorbar(col, ax=axs[2], label="log10 flux")
         plt.show()
 
