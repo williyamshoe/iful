@@ -318,10 +318,6 @@ def get_p_value(fitting_seq, kwargs_model, mask):
     return chi2.sf(chi_sq * dof, dof)
 
 def prune_mcmc_chains(traces, deviation_threshold=3.5, stagnancy_threshold=0.01, split=False):
-    """
-    NOTE: Use this ONLY for post-processing your final chains after convergence.
-    Do not use this mid-run to evaluate convergence, as it hides stuck walkers from the R-hat check.
-    """
     traces = np.array(traces)
     C, L, P = traces.shape
     print(f"Processing MCMC output: {C} nwalkers, {L} steps, {P} parameters.")
