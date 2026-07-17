@@ -7,6 +7,7 @@ from IPython.display import Image as imp
 from lenstronomy.Util import param_util
 import matplotlib.pyplot as plt
 import math, os
+from collections import Counter
 
 
 def check_list(variable):
@@ -201,6 +202,21 @@ def calculate_fwhm(amplitudes, sigmas):
     fwhm = 2 * hwhm
     return fwhm
 
+def rename_repeats(strings):
+    counts = Counter(strings)
+    
+    seen_counts = {}
+    result = []
+    
+    for s in strings:
+        if counts[s] > 1:
+            current_count = seen_counts.get(s, 0)
+            result.append(f"{s}{current_count}")
+            seen_counts[s] = current_count + 1
+        else:
+            result.append(s)
+            
+    return result
 
 def homography_loss(points_src, points_dst):
     p_src = np.array(points_src)
@@ -301,11 +317,14 @@ def get_p_value(fitting_seq, kwargs_model, mask):
     dof = int(np.sum(mask))
     return chi2.sf(chi_sq * dof, dof)
 
-
 def prune_mcmc_chains(traces, deviation_threshold=3.5, stagnancy_threshold=0.01, split=False):
+    """
+    NOTE: Use this ONLY for post-processing your final chains after convergence.
+    Do not use this mid-run to evaluate convergence, as it hides stuck walkers from the R-hat check.
+    """
     traces = np.array(traces)
     C, L, P = traces.shape
-    print(f"Processing MCMC output: {C} chains, {L} iterations, {P} parameters.")
+    print(f"Processing MCMC output: {C} nwalkers, {L} steps, {P} parameters.")
 
     chain_variances = np.var(traces, axis=1)
     median_variances = np.median(chain_variances, axis=0)
