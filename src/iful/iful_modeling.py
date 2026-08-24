@@ -427,8 +427,7 @@ class IFULModel:
                 test_flx[k] = 1.0 
                 test_flx = np.array(flx_params_base + list(test_flx))
                 basis_flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, test_flx)
-                
-                basis_source_light = unit_source_light * basis_flxs[:, np.newaxis]
+                basis_source_light = np.nan_to_num(unit_source_light * basis_flxs[:, np.newaxis], nan=0.0)
                 
                 basis_datacube = np.zeros_like(self.obs_datacube)
                 for ii in range(basis_source_light.shape[1]):
@@ -487,9 +486,9 @@ class IFULModel:
         sig_grid_safe = np.where(sig_grid <= 0, 1.0, sig_grid)
         diff_sig = diff / sig_grid_safe
         gauss = flx_grid * ratio_grid * np.exp(-0.5 * diff_sig**2)
-        source_light = np.sum(gauss, axis=2)
+        source_light = np.nan_to_num(np.sum(gauss, axis=2), nan=0.0)
 
-        nan_mask = np.isnan(z_los) | np.isnan(sigma_total) | np.isnan(flxs) | (sigma_total <= 0)
+        nan_mask = np.isnan(z_los) | np.isnan(sigma_total) | (sigma_total <= 0)
         source_light[nan_mask] = 0.0
 
         model_datacube = []
@@ -506,33 +505,33 @@ class IFULModel:
             * self.datacube_mask
         )
 
-        if vd_plots:    
-            lensed_diag_imgs = np.array(
-                [
-                    [1, z * c - v_los_params[-1], vds]
-                    for z, vds in zip(z_los, v_disp)
-                ]
-            )
-            diag_plots = []
-            magn = np.mean(immodel.ImageNumerics.re_size_convolve(lensed_diag_imgs[:, 0], unconvolved=False))
-            diag_plots += [
-                immodel.ImageNumerics.re_size_convolve(
-                    lensed_diag_imgs[:, 1]/magn, unconvolved=False
-                )
-            ]
-            vd_flat = lensed_diag_imgs[:, 2]
-            vd_flat = np.array([v if v<np.percentile(vd_flat, 99.99) else np.mean(vd_flat) for v in vd_flat])
-            diag_plots += [
-                immodel.ImageNumerics.re_size_convolve(
-                    vd_flat**2/magn, unconvolved=False
-                )**0.5
-            ]
-            # diag_plots += [
-            #     immodel.ImageNumerics.re_size_convolve(
-            #         lensed_diag_imgs[:, 2]/magn, unconvolved=False
-            #     )
-            # ]
-            diag_plots = np.array(diag_plots)
+        if vd_plots:
+            if self.iful_profiles[0] in ["ARCTAN", "TANH", "MULTIPARAM"]:
+                v_sys = v_los_params[-1]
+            else:
+                v_sys = self.imset.zs * c
+
+            valid_mask = ~np.isnan(z_los) & ~np.isnan(v_disp)
+            v_rel_valid = np.where(valid_mask, z_los * c - v_sys, 0.0)
+            indicator = valid_mask.astype(float)
+
+            magn = immodel.ImageNumerics.re_size_convolve(indicator, unconvolved=False)
+            v_conv = immodel.ImageNumerics.re_size_convolve(v_rel_valid, unconvolved=False)
+
+            with np.errstate(divide="ignore", invalid="ignore"):
+                v_los_plot = np.where(magn > 1e-4, v_conv / magn, np.nan)
+
+            vd_valid = np.where(valid_mask, v_disp, 0.0)
+            vd_valid_flat = vd_valid[valid_mask]
+            p99 = np.percentile(vd_valid_flat, 99.99) if len(vd_valid_flat) > 0 else 500
+            mean_vd = np.mean(vd_valid_flat) if len(vd_valid_flat) > 0 else 50
+            vd_clean = np.array([v if v < p99 else mean_vd for v in vd_valid])
+
+            vd_conv = immodel.ImageNumerics.re_size_convolve(vd_clean**2, unconvolved=False)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                vd_plot = np.where(magn > 1e-4, (vd_conv / magn) ** 0.5, np.nan)
+
+            diag_plots = np.array([v_los_plot, vd_plot])
 
             # binary_mask = np.where(np.sum(model_datacube, axis=0) > , 1.0, np.nan)
 
@@ -656,6 +655,7 @@ class IFULModel:
                 test_flx[k] = 1.0 
                 test_flx = np.array(flx_params_base + list(test_flx))
                 basis_flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, test_flx)
+                basis_flxs = np.nan_to_num(basis_flxs, nan=0.0)
                 
                 # Directly resize and convolve the 2D basis model
                 basis_image = immodel.ImageNumerics.re_size_convolve(
@@ -692,6 +692,7 @@ class IFULModel:
         # STANDARD MODEL GENERATION
         # ==========================================
         flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, flx_params)
+        flxs = np.nan_to_num(flxs, nan=0.0)
 
         # Generate single 2D model image
         model_image = immodel.ImageNumerics.re_size_convolve(
@@ -854,7 +855,7 @@ class IFULModel:
 
         binno = np.asarray(binno)
         fitted_params = np.asarray(fitted_params)
-        res = np.zeros_like(binno)
+        res = np.full(binno.shape, np.nan)
         nan_mask = np.isnan(binno)
         res[~nan_mask] = fitted_params[binno[~nan_mask].astype(int)]
         return res
