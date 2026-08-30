@@ -1,5 +1,27 @@
+# Jupyter & Checkpoints
 **/.ipynb_checkpoints/
+
+# Logs & temp
 *.log
 *.logs
+temp/
+
+# Python cache & compiled files
 **/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build & packaging outputs (do NOT commit to git)
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local model cache
 **/s4_models/
