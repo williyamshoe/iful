@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iful"
+version = "0.1.0"
+description = "Integral Field Unit Lensing pipeline for joint-modeling strong lens convergence and source kinematics"
+readme = "README.md"
+authors = [
+    { name = "William Sheu" }
+]
+license = "MIT"
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "numpy>=1.22.0",
+    "scipy>=1.8.0",
+    "astropy>=5.0",
+    "matplotlib>=3.5.0",
+    "lenstronomy>=1.10.0",
+    "tqdm>=4.60.0",
+    "powerbin>=1.1.0",
+    "pillow>=9.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/williyamshoe/iful"
+Repository = "https://github.com/williyamshoe/iful"
+
+[tool.setuptools.packages.find]
+where = ["src"]
