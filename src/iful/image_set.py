@@ -202,7 +202,7 @@ class ImageSet:
             self.zs = self.init_spec_fit[0]
         print(self.init_spec_fit)
 
-    def gen_2d_spec(self, params, slope=False):
+    def gen_2d_spec(self, params, slope=False, wavelength_range=None):
         # params_format: z [1], sigma [1], amp_0 [1], ratios [self.restwave_peaks - 1]
         z, sigma_ang, amp_0, ratios = params[0], params[1], params[2], params[3:]
         if slope:
@@ -212,6 +212,9 @@ class ImageSet:
         else:
             m = 0
             b = 0
+
+        if wavelength_range is None:
+            wavelength_range = self.wavelength
 
         ratios_f = [1] + list(np.array(ratios))
         return np.array(
@@ -229,7 +232,7 @@ class ImageSet:
                 )
                 + (w - np.mean(self.wavelength)) * m
                 + b
-                for w in self.wavelength
+                for w in wavelength_range
             ]
         )
 
