@@ -3,7 +3,6 @@ from scipy.optimize import fsolve, minimize
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 from PIL import Image
-from IPython.display import Image as imp
 from lenstronomy.Util import param_util
 import matplotlib.pyplot as plt
 import math, os

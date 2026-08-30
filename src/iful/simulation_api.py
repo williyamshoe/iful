@@ -9,10 +9,10 @@ from lenstronomy.Workflow.fitting_sequence import FittingSequence
 from lenstronomy.LensModel.lens_model import LensModel
 from lenstronomy.LensModel.lens_model_extensions import LensModelExtensions
 
-from iful.image_set import ImageSet
-from iful.flat_modeling import FlatModel
-from iful.iful_modeling import IFULModel
-from iful.util import *
+from .image_set import ImageSet
+from .flat_modeling import FlatModel
+from .iful_modeling import IFULModel
+from .util import *
 
 class SimulationMockImageSet(ImageSet):
     """
