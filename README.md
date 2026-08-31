@@ -157,7 +157,7 @@ iful/
 │   └── util.py              # Mathematical profiles & utilities
 ├── examples/                # Jupyter notebook tutorials 
 ├── tests/                   # Automated pytest suite
-└── docs/assets/logo.png     # IFUL package logo
+└── docs/assets/             # README figures
 ```
 
 ---
