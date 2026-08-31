@@ -1,3 +1,11 @@
+"""
+3D IFU Lensing modeling module (IFULModel).
+
+This module provides the core `IFULModel` class, which evaluates 3D lensed spectroscopic data cubes,
+models velocity/dispersion/flux distributions on the source plane, performs ray-shooting, handles
+Voronoi spatial binning, and calculates likelihood residuals and image diagnostics.
+"""
+
 import numpy as np
 import scipy as sp
 import copy
@@ -23,6 +31,61 @@ from .flat_modeling import *
 
 
 class IFULModel:
+    """
+    3D IFU Lensing Model class combining 2D lens light models with source plane kinematics and spectra.
+
+    Attributes
+    ----------
+    imset : ImageSet
+        ImageSet instance containing the 3D data cube and noise characteristics.
+    sourceplane_size : int
+        Pixel resolution of the source-plane grid.
+    num_bins : int
+        Number of Voronoi spatial bins on the source plane (0 if binning disabled).
+    num_rsersics : float
+        Radius multiplier in Sersic scale lengths for source-plane grid bounds.
+    init_fitting_seq : Lenstronomy FittingSequence
+        Fitting sequence reference from `FlatModel`.
+    spectral_res : float
+        Spectral resolution R = lambda / delta_lambda of the instrument.
+    constant_val : float
+        Baseline constant offset value for kinematic profiles.
+    iful_profiles : list of str
+        Profile specification names `[v_los_profile, v_disp_profile, flux_profile]`.
+    equal_weight_voronoi : bool
+        Whether equal weight Voronoi binning is enabled.
+    d_s : float
+        Angular diameter distance to the source in kpc.
+    imModel_classcreator : Lenstronomy ImageModel
+        Base Lenstronomy ImageModel creator instance.
+    immodel_init : Lenstronomy ImageModel
+        Initialized Lenstronomy ImageModel with linear solver solved.
+    sm_init : SourceMapping
+        Source mapping object from Lenstronomy for ray-shooting.
+    init_sersic_amp : float
+        Initial Sersic flux amplitude from 2D fit.
+    len_model_numparams : int
+        Number of free lens model parameters.
+    v_los_fnc, v_los_numparams : callable, int
+        Line-of-sight velocity function and parameter count.
+    v_disp_fnc, v_disp_numparams : callable, int
+        Velocity dispersion function and parameter count.
+    flx_fnc, flx_numparams : callable, int
+        Flux surface brightness function and parameter count.
+    obs_datacube : numpy.ndarray
+        Transposed observed datacube array of shape (N_wave, N_x, N_y).
+    datacube_mask : numpy.ndarray
+        Transposed 3D mask array.
+    datacube_unc : numpy.ndarray
+        Uncertainty 3D array matching datacube shape.
+    central_wave : float
+        Central observed wavelength in Angstroms.
+    init_lenstronomy_args : list
+        Vectorized Lenstronomy initial arguments list.
+    init_x_source_vals, init_y_source_vals : numpy.ndarray
+        Source plane position coordinates resulting from ray shooting the image grid.
+    """
+
     def __init__(
         self,
         imageset,
@@ -36,6 +99,32 @@ class IFULModel:
         constant_val=0.0,
         d_s=None,
     ):
+        """
+        Initialize an IFULModel object.
+
+        Parameters
+        ----------
+        imageset : ImageSet
+            ImageSet object containing the data cube and auxiliary parameters.
+        flatmodel : FlatModel
+            FlatModel instance providing the 2D lens and source fit initializations.
+        iful_profiles : list of str
+            Profile names for line-of-sight velocity, velocity dispersion, and flux surface brightness.
+        sourceplane_size : int
+            Size of the source plane grid (e.g. 100).
+        num_bins : int
+            Target number of Voronoi bins.
+        num_rsersics : float
+            Source plane domain radius factor.
+        spectral_res : float
+            Instrument spectral resolution (R = lambda / delta_lambda).
+        equal_weight_voronoi : bool, default=False
+            If True, perform equal weight Voronoi binning.
+        constant_val : float, default=0.0
+            Constant offset value for kinematic profiles.
+        d_s : float, optional
+            Angular diameter distance to source in kpc. Calculated from redshift if None.
+        """
         self.imset = imageset
         self.sourceplane_size = sourceplane_size
         self.num_bins = num_bins
@@ -73,11 +162,12 @@ class IFULModel:
         self.immodel_init = copy.deepcopy(self.imModel_classcreator)
         self.immodel_init.image_linear_solve(inv_bool=True, **kwargs_params)
 
-        # immodel_init = immodel_init._imageModel_list[0]
+        # Extract source mapping handler from Lenstronomy image model
         self.sm_init = (self.immodel_init._imageModel_list if hasattr(self.immodel_init, "_imageModel_list") else self.immodel_init._image_model_list)[0].source_mapping
 
         self.get_sourceplane_img(flatmodel)
 
+        # Set up Voronoi spatial binning if requested
         if np.sum(["VORONOI" in s for s in self.iful_profiles]) >= 1 and self.equal_weight_voronoi:
             source_fluxes_arg = copy.deepcopy(self.source_fluxes)
             source_fluxes_arg[~np.isnan(source_fluxes_arg)] = 1.
@@ -117,6 +207,7 @@ class IFULModel:
 
         self.datacube_mask = np.transpose(self.imset.mask_3d, (2, 0, 1))
         
+        # Calculate 3D uncertainty map combining read noise and Poisson noise
         exptime = self.imset.aux_info.get("exptime", 1.0)
         poisson_obs = np.maximum(self.obs_datacube, 0.0) / exptime
         datacube_variance = (self.imset.brms_3d)**2 + (poisson_obs)
@@ -133,6 +224,7 @@ class IFULModel:
             **flatmodel.init_pso_fit
         )
 
+        # Ray shoot pixel coordinates to source plane coordinates
         ra_grid, dec_grid = (self.immodel_init._imageModel_list if hasattr(self.immodel_init, "_imageModel_list") else self.immodel_init._image_model_list)[
             0
         ].ImageNumerics.coordinates_evaluate
@@ -142,7 +234,21 @@ class IFULModel:
             )
         )
 
+
     def get_num_free_params(self, linear_solve=False):
+        """
+        Compute total number of free parameters for the IFULModel.
+
+        Parameters
+        ----------
+        linear_solve : bool, default=False
+            If True, flux parameters are solved analytically via NNLS rather than fit as free optimizer parameters.
+
+        Returns
+        -------
+        int
+            Total count of free parameters.
+        """
         num_params = (
             self.len_model_numparams
             + self.v_los_numparams
@@ -156,6 +262,14 @@ class IFULModel:
         return num_params
 
     def get_sourceplane_img(self, flatmodel):
+        """
+        Evaluate surface brightness on a source-plane grid bounded by Sersic radius.
+
+        Parameters
+        ----------
+        flatmodel : FlatModel
+            FlatModel instance containing initial Sersic source kwargs parameters.
+        """
         self.sourcecenter = np.array(
             [
                 flatmodel.init_pso_fit["kwargs_source"][0]["center_x"],
@@ -224,12 +338,31 @@ class IFULModel:
         self.dpix = dpix
 
     def voronoi_given_nbins(self, target_y, low, high, kwargs_source, source_fluxes_arg, epsilon=1e-7):
+        """
+        Perform Voronoi binning on source-plane grid targeting a specified number of bins.
+
+        Parameters
+        ----------
+        target_y : int
+            Target number of Voronoi bins.
+        low : float
+            Lower search bound for target bin capacity.
+        high : float
+            Upper search bound for target bin capacity.
+        kwargs_source : list of dict
+            Lenstronomy source light parameters.
+        source_fluxes_arg : numpy.ndarray
+            Flux or signal-to-noise values per pixel used for Voronoi binning capacity.
+        epsilon : float, default=1e-7
+            Bisection convergence tolerance threshold.
+        """
         xy = np.column_stack((self.pixel_locations.T[1], self.pixel_locations.T[0]))
 
         def capacity_spec(index):
             sn = np.sum(source_fluxes_arg[index]) / np.sqrt(len(index))
             return sn**2
 
+        # Bisection search to match target number of Voronoi bins
         while (high - low) > epsilon:
             mid = low + (high - low) / 2.0
             pow_bin = PowerBin(
@@ -293,6 +426,25 @@ class IFULModel:
     def given_ra_dec_return_bin_no(
         self, x_source, y_source, source_params, return_dist=False
     ):
+        """
+        Map source-plane (x, y) coordinates to nearest Voronoi bin index.
+
+        Parameters
+        ----------
+        x_source : float or numpy.ndarray
+            Source plane x coordinates.
+        y_source : float or numpy.ndarray
+            Source plane y coordinates.
+        source_params : dict
+            Source model parameters (center, e1, e2, R_sersic).
+        return_dist : bool, default=False
+            If True, also return array of radial distances from source center.
+
+        Returns
+        -------
+        numpy.ndarray or tuple of (numpy.ndarray, numpy.ndarray)
+            Voronoi bin index array (and radial distances if return_dist=True).
+        """
         x_ra, y_dec = param_util.transform_e1e2_product_average(
             x_source - source_params["center_x"],
             y_source - source_params["center_y"],
@@ -319,7 +471,29 @@ class IFULModel:
             return res, dists
         return res
 
+
     def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False, vd_plots=False, trim_vd_plot=0):
+        """
+        Evaluate 3D datacube model residuals (chi-squared loss) for a set of input parameters.
+
+        Parameters
+        ----------
+        all_fitted_params : array-like
+            Concatenated list of fitted parameters `[lens_params, v_los_params, v_disp_params, (flux_params)]`.
+        return_datacube : bool, default=False
+            If True, return modeled 3D datacube (and flx_params if linear_solve is True).
+        linear_solve : bool, default=False
+            If True, solve for flux amplitudes analytically via non-negative least squares (NNLS).
+        vd_plots : bool, default=False
+            If True, generate kinematic (v_los, v_disp, flux) diagnostic plots.
+        trim_vd_plot : int, default=0
+            Number of border pixels to crop out when displaying velocity dispersion plots.
+
+        Returns
+        -------
+        float or tuple
+            Chi-squared loss value `res` (or `(res, model_datacube)` or `(res, model_datacube, flx_params)`).
+        """
         assert self.get_num_free_params(linear_solve=linear_solve) == len(all_fitted_params)
 
         lens_model_params = all_fitted_params[: self.len_model_numparams]
@@ -582,6 +756,23 @@ class IFULModel:
         return res
 
     def generate_image_residuals(self, all_fitted_params, return_image=False, linear_solve=False):
+        """
+        Evaluate 2D white-light image model residuals (chi-squared loss).
+
+        Parameters
+        ----------
+        all_fitted_params : array-like
+            Parameters vector containing `[lens_params, (flux_params)]`.
+        return_image : bool, default=False
+            If True, return modeled 2D white light image.
+        linear_solve : bool, default=False
+            If True, solve for flux amplitudes analytically via linear NNLS.
+
+        Returns
+        -------
+        float or tuple
+            Chi-squared loss value `res` (or `(res, model_image)` or `(res, model_image, flx_params)`).
+        """
         # The number of expected parameters is just the lens parameters + flux parameters
         expected_params = self.len_model_numparams
         if not linear_solve:
@@ -711,6 +902,18 @@ class IFULModel:
         return res
 
     def generate_source_plots(self, all_fitted_params, image_size=None, dpix=None):
+        """
+        Generate diagnostic plots of line-of-sight velocity, dispersion, and flux maps on the source plane.
+
+        Parameters
+        ----------
+        all_fitted_params : array-like
+            Full fitted parameters vector.
+        image_size : int, optional
+            Source plane pixel resolution. Defaults to `self.sourceplane_size`.
+        dpix : float, optional
+            Pixel scale of source plane image. Defaults to `self.dpix`.
+        """
         assert self.get_num_free_params() == len(all_fitted_params)
 
         if image_size is None:
@@ -814,6 +1017,21 @@ class IFULModel:
         plt.show()
 
     def decide_profiles_fnc(self, profile_name, num_bins):
+        """
+        Select profile calculation function and return parameter count for named profile.
+
+        Parameters
+        ----------
+        profile_name : str
+            Name of the profile (e.g. 'ARCTAN', 'SERSIC', 'VORONOI', 'POWER_LAW_BH', etc.).
+        num_bins : int
+            Number of Voronoi bins.
+
+        Returns
+        -------
+        tuple of (callable, int)
+            Static profile function reference and number of required parameters.
+        """
         if profile_name == "VORONOI":
             return self.get_voronoi_v_given_xy_bin, num_bins
         elif profile_name == "ARCTAN":
@@ -850,6 +1068,25 @@ class IFULModel:
         
     @staticmethod
     def get_voronoi_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate Voronoi binned profile value for given bin numbers.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin index array matching positions.
+        aux_params : list
+            Auxiliary parameters `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : array-like
+            Values assigned per Voronoi bin.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated profile values per bin.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: list same len of num of bins
 
@@ -862,6 +1099,25 @@ class IFULModel:
 
     @staticmethod
     def get_arctan_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate 2D arctan velocity profile.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates on source plane.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            Auxiliary parameters `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float
+            `[v_pa, v_a, v_b, v_c]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated 2D arctan velocities.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [v_pa, v_a, v_b, v_c]
 
@@ -876,6 +1132,25 @@ class IFULModel:
 
     @staticmethod
     def get_tanh_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate 2D tanh velocity profile.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float
+            `[v_pa, v_a, v_b, v_c]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated 2D tanh velocities.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [v_pa, v_a, v_b, v_c]
 
@@ -890,6 +1165,25 @@ class IFULModel:
 
     @staticmethod
     def get_multiparam_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate 2D multi-parameter velocity profile.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float
+            `[v_pa, v_a, v_b, v_beta, v_xi, v_c]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated velocities.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [v_pa, v_a, v_b, v_beta, v_xi, v_c]
 
@@ -904,6 +1198,25 @@ class IFULModel:
 
     @staticmethod
     def get_sersic_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate surface brightness scaled by factor for Sersic profile.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float
+            `[scale]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated scaled Sersic flux values.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [scale]
 
@@ -917,6 +1230,25 @@ class IFULModel:
 
     @staticmethod
     def get_gaussian_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate 2D Gaussian profile centered on source center.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float
+            `[amp, sigma_model]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated profile values.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [amp, sigma_model]
 
@@ -933,6 +1265,25 @@ class IFULModel:
             
     @staticmethod
     def get_power_law_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate power law radial dispersion profile: scale * dist ** ((2 - gamma) / 2).
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float
+            `[scale, gamma]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated power law dispersion values.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [scale, gamma]
 
@@ -955,6 +1306,25 @@ class IFULModel:
 
     @staticmethod
     def get_exponential_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate exponential radial dispersion profile: central_vd * exp(-dist / scale_rad).
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float
+            `[central_vd, scale_rad]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated exponential velocity dispersion values.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [central_vd, scale_rad]
 
@@ -977,6 +1347,25 @@ class IFULModel:
 
     @staticmethod
     def get_power_law_bh_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate power law dispersion combined with central black hole Keplerian potential.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float
+            `[scale, gamma, lg_bh_mass]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Combined velocity dispersion values.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [scale, gamma, lg_bh_mass]
 
@@ -1007,6 +1396,25 @@ class IFULModel:
     
     @staticmethod
     def get_constant_v_given_xy_bin(x, y, binno, aux_params, fitted_params=[]):
+        """
+        Evaluate constant velocity or dispersion profile.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float, optional
+            `[constant_val]` or empty.
+
+        Returns
+        -------
+        numpy.ndarray
+            Constant profile array.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [constant_val] or []
 
@@ -1022,6 +1430,25 @@ class IFULModel:
 
     @staticmethod
     def get_constant_bh_v_given_xy_bin(x, y, binno, aux_params, fitted_params=[]):
+        """
+        Evaluate constant baseline velocity dispersion combined with central black hole Keplerian term.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : list of float, optional
+            `[lg_bh_mass]` or `[constant_val, lg_bh_mass]`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated velocity dispersion.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: [constant_val] or []
 
@@ -1048,6 +1475,25 @@ class IFULModel:
 
     @staticmethod
     def get_shapelets_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
+        """
+        Evaluate 2D Shapelet basis set profile.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Position coordinates on source plane.
+        binno : array-like
+            Bin indices.
+        aux_params : list
+            `[kwargs_source, sm, constant_val, d_s]`.
+        fitted_params : array-like
+            Shapelet scale beta followed by 1D array of shapelet amplitudes.
+
+        Returns
+        -------
+        numpy.ndarray
+            Evaluated shapelet profile.
+        """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
         # fitted_params: beta + 1D array of shapelet amplitudes
         kwargs_source = aux_params[0]
