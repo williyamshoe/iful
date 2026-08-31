@@ -11,10 +11,6 @@ A Python pipeline for joint-modeling strong gravitational lensing and source kin
 
 # <img src="docs/assets/animation_iful_final.gif" align="center" height="250" alt="" />
 
----
-
-## Statement of Need
-
 Strong gravitational lensing is a cornerstone probe of observational cosmology—enabling independent measurements of the Hubble constant ($H_0$) to break the Hubble tension via time-delay cosmography, constraining the dark energy equation-of-state ($w$) and matter density ($\Omega_{\rm m, 0}$) via compound lensing systems, and probing dark matter substructure and high-redshift galaxy structures. All of these cosmological and astrophysical applications fundamentally depend on the ability to precisely and accurately model the lensing mass distribution.
 
 Traditional lens modeling pipelines rely almost exclusively on 2D imaging data (lensed image positions and brightness arcs), occasionally supplemented by 1D integrated slit spectroscopy of the deflector galaxy. However, imaging-only pipelines face key limitations:
