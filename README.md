@@ -71,7 +71,12 @@ Here is a quick example creating a mock lensed IFU datacube and configuring the 
 
 ```python
 import numpy as np
-from iful.simulation_api import SimulationMockImageSet, create_simulation_models, run_galaxy_simulation, add_instrument_noise
+from iful.simulation_api import (
+    SimulationMockImageSet, 
+    create_simulation_models, 
+    run_galaxy_simulation, 
+    add_instrument_noise
+)
 
 psf_path = "path/to/psf"
 zs = 3.8
@@ -113,15 +118,24 @@ sim_params = [
 ]
 
 # Run galaxy simulation from API
-lensed_image, unlensed_source, ra_crit, dec_crit, ra_caustic, dec_caustic = run_galaxy_simulation(
+results = run_galaxy_simulation(
     ifulmodel, 
     sim_params, 
     source_grid_size=100,
     source_grid_scale=0.015
 )
+lensed_image, unlensed_source, ra_crit, dec_crit, ra_caustic, dec_caustic = results
 
-res, simulated_datacube = ifulmodel.generate_residuals(sim_params, return_datacube=True, vd_plots=False)
-simulated_datacube_noisy, bg_noise = add_instrument_noise(simulated_datacube, bg_noise_std_frac=0.02, seed=42)
+res, simulated_datacube = ifulmodel.generate_residuals(
+    sim_params, 
+    return_datacube=True, 
+    vd_plots=False
+)
+simulated_datacube_noisy, bg_noise = add_instrument_noise(
+    simulated_datacube, 
+    bg_noise_std_frac=0.02, 
+    seed=42
+)
 ```
 
 For comprehensive tutorials, check out the notebooks in the [`examples/`](examples/) directory. In particular, see the `s4c_` series of notebooks for a tutorial on simulating and fitting to real data.
