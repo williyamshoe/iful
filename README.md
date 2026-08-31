@@ -1,20 +1,13 @@
-<table>
-  <tr>
-    <td width="130" align="center" valign="middle">
-      <img src="docs/assets/logo.png" alt="IFUL Logo" width="120" />
-    </td>
-    <td valign="middle">
-      <h1>IFUL: Integral Field Unit Lensing</h1>
-      <p><strong>A Python pipeline for joint-modeling strong gravitational lensing and source kinematics</strong></p>
-      <p>
-        <a href="https://github.com/williyamshoe/iful/actions/workflows/test.yml"><img src="https://github.com/williyamshoe/iful/actions/workflows/test.yml/badge.svg" alt="Tests Status"></a>
-        <a href="https://pypi.org/project/iful/"><img src="https://img.shields.io/pypi/v/iful.svg" alt="PyPI version"></a>
-        <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python Versions"></a>
-        <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-      </p>
-    </td>
-  </tr>
-</table>
+# IFUL: Integral Field Unit Lensing <img src="docs/assets/logo.png" align="right" height="138" alt="" />
+
+<!-- badges: start -->
+[![Tests Status](https://github.com/williyamshoe/iful/actions/workflows/test.yml/badge.svg)](https://github.com/williyamshoe/iful/actions/workflows/test.yml)
+[![PyPI version](https://img.shields.io/pypi/v/iful.svg)](https://pypi.org/project/iful/)
+[![Python Versions](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
+[![Python Versions](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- badges: end -->
+
+A Python pipeline for joint-modeling strong gravitational lensing and source kinematics
 
 ---
 
