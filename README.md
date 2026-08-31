@@ -7,7 +7,7 @@
 [![Python Versions](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 <!-- badges: end -->
 
-A Python pipeline for joint-modeling strong gravitational lensing and source kinematics
+A Python pipeline for joint-modeling and simulation of strong gravitational lensing and their source kinematics.
 
 # <img src="docs/assets/animation_iful_final.gif" align="center" height="250" alt="" />
 
