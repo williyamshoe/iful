@@ -1,14 +1,13 @@
-<p align="center">
-  <img src="docs/assets/logo.png" alt="IFUL Logo" width="220" />
-</p>
+<h1>
+  <img src="docs/assets/logo.png" alt="IFUL Logo" width="55" align="left" style="margin-right: 12px;" />
+  IFUL: Integral Field Unit Lensing
+</h1>
 
-<h1 align="center">IFUL: Integral Field Unit Lensing</h1>
-
-<p align="center">
+<p>
   <strong>A Python pipeline for joint-modeling strong gravitational lensing and source kinematics</strong>
 </p>
 
-<p align="center">
+<p>
   <a href="https://github.com/williyamshoe/iful/actions/workflows/test.yml"><img src="https://github.com/williyamshoe/iful/actions/workflows/test.yml/badge.svg" alt="Tests Status"></a>
   <a href="https://pypi.org/project/iful/"><img src="https://img.shields.io/pypi/v/iful.svg" alt="PyPI version"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python Versions"></a>
