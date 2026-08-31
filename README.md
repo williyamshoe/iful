@@ -9,6 +9,8 @@
 
 A Python pipeline for joint-modeling strong gravitational lensing and source kinematics
 
+# <img src="docs/assets/animation_iful_final.gif" align="center" height="250" alt="" />
+
 ---
 
 ## Statement of Need
