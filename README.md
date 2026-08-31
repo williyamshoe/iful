@@ -19,7 +19,7 @@
 
 ## Statement of Need
 
-Strong gravitational lensing is a cornerstone probe of observational cosmology—enabling independent measurements of the Hubble constant ($H_0$) to break the Hubble tension via time-delay cosmography, constraining the dark energy equation-of-state ($w$) and matter density ($\Omega_m$) via compound lensing systems, and probing dark matter substructure and high-redshift galaxy structures. All of these cosmological and astrophysical applications fundamentally depend on the ability to precisely and accurately model the lensing mass distribution.
+Strong gravitational lensing is a cornerstone probe of observational cosmology—enabling independent measurements of the Hubble constant ($H_0$) to break the Hubble tension via time-delay cosmography, constraining the dark energy equation-of-state ($w$) and matter density ($\Omega_{\rm m, 0}$) via compound lensing systems, and probing dark matter substructure and high-redshift galaxy structures. All of these cosmological and astrophysical applications fundamentally depend on the ability to precisely and accurately model the lensing mass distribution.
 
 Traditional lens modeling pipelines rely almost exclusively on 2D imaging data (lensed image positions and brightness arcs), occasionally supplemented by 1D integrated slit spectroscopy of the deflector galaxy. However, imaging-only pipelines face key limitations:
 1. **Mass-Sheet and Profile Degeneracies**: Imaging constraints alone often leave the radial mass slope and mass profile parameters underspecified.
@@ -73,48 +73,64 @@ pip install -e .[test]
 
 ## Quickstart Example
 
-Here is a quick example creating a mock lensed IFU datacube, configuring the lensing and kinematics models, and evaluating model residuals:
+Here is a quick example creating a mock lensed IFU datacube and configuring the lensing and kinematics models:
 
 ```python
 import numpy as np
-from iful.simulation_api import SimulationMockImageSet, create_simulation_models
+from iful.simulation_api import SimulationMockImageSet, create_simulation_models, run_galaxy_simulation, add_instrument_noise
 
-# 1. Create a mock IFU ImageSet (e.g. 10x10 spaxels, 20 wavelength channels)
-wavelengths = np.linspace(5000, 5200, 20)
-mock_psf_path = "path/to/psf.npy"  # 2D numpy array PSF
+psf_path = "path/to/psf"
+zs = 3.8
 
 imset = SimulationMockImageSet(
-    size=10,
-    pixscale_arcsec=0.05,
-    zs=3.0,
-    wavelengths_full=wavelengths,
-    psf_path=mock_psf_path,
+    size=40,
+    pixscale_arcsec=0.075,
+    zs=zs,
+    wavelengths_full=np.linspace(23650.0 - 300, 24250.0 + 300, 120),
+    psf_path=psf_path
 )
+imset.restwave_peaks = [4959.0, 5007.0]
+# parameters format: [z, sigma_ang, amp_0, ratio (5007/4959 = 3.0)]
+imset.init_spec_fit = np.array([zs, 24.0, 1.0, 3.0])
 
-# Set rest-frame emission line peaks (e.g., Lyman-alpha or H-alpha)
-imset.restwave_peaks = [1216.0]
-imset.init_spec_fit = [3.0, 10.0, 100.0, 1.0]  # [z, sigma, amp, ratio]
-
-# 2. Initialize FlatModel and IFULModel with custom kinematic profiles
-profiles = ["ARCTAN", "CONSTANT_FITTED_BH", "SERSIC"]
-flat_model, iful_model = create_simulation_models(
+# Setup FlatModel and IFULModel from simulation API
+fm, ifulmodel = create_simulation_models(
     imset,
-    theta_E=0.8,
-    source_x=0.05,
-    source_y=0.05,
-    iful_profiles=profiles,
+    theta_E=1.0,
+    source_x=-0.01,
+    source_y=-0.01,
+    iful_profiles=["ARCTAN", "CONSTANT_FITTED_BH", "SERSIC"]
 )
 
-# 3. Evaluate model log-likelihood & residuals
-num_free_params = iful_model.get_num_free_params()
-initial_params = np.zeros(num_free_params)
-initial_params[0] = 0.8  # theta_E
+# Extract parameters
+sim_params = [
+    # EPL_Q_PHI (6 params): theta_E, gamma, q, phi, center_x, center_y
+    1., 1.8, 0.75, 0.5, -0.1, -0.1,
+    # SHEAR (2 params): gamma1, gamma2
+    0.05, -0.05,
+    # Source (6 params): R_sersic, n_sersic, e1, e2, center_x, center_y
+    0.3, 1.2, 0.0, 0.0, -0.01, -0.01,
+    # v_los (4 params): v_pa, v_a, v_b, v_c (sys_vel = zs * c)
+    -45.0, 300.0, 15, zs * 299792,
+    # v_disp (2 params): constant velocity dispersion of 50 km/s and log10 BH mass of 9.0
+    50.0, 9.0,
+    # flx (1 param): scale factor
+    1e6
+]
 
-chi2_residual = iful_model.generate_residuals(initial_params)
-print(f"Chi-squared residual: {chi2_residual:.3f}")
+# Run galaxy simulation from API
+lensed_image, unlensed_source, ra_crit, dec_crit, ra_caustic, dec_caustic = run_galaxy_simulation(
+    ifulmodel, 
+    sim_params, 
+    source_grid_size=100,
+    source_grid_scale=0.015
+)
+
+res, simulated_datacube = ifulmodel.generate_residuals(sim_params, return_datacube=True, vd_plots=False)
+simulated_datacube_noisy, bg_noise = add_instrument_noise(simulated_datacube, bg_noise_std_frac=0.02, seed=42)
 ```
 
-For comprehensive tutorials, check out the notebooks in the [`examples/`](examples/) directory.
+For comprehensive tutorials, check out the notebooks in the [`examples/`](examples/) directory. In particular, see the `s4c_` series of notebooks for a tutorial on simulating and fitting to real data.
 
 ---
 
@@ -122,19 +138,16 @@ For comprehensive tutorials, check out the notebooks in the [`examples/`](exampl
 
 ```
 iful/
-├── docs/assets/logo.png     # IFUL package logo
-├── examples/                # Jupyter notebook tutorials (excluded from pip package)
-│   ├── s4c_init.ipynb
-│   ├── s4c_iful_modeling_pl_bh.ipynb
-│   └── simulate_lensed_galaxy.ipynb
-├── src/iful/                # Package source code (~100 KB lightweight install)
+├── src/iful/                # Package source code 
 │   ├── __init__.py
 │   ├── image_set.py         # 3D Datacube processing & masking
 │   ├── flat_modeling.py     # Lensing model wrapper
 │   ├── iful_modeling.py     # Joint lensing + IFU kinematics model
 │   ├── simulation_api.py    # Mock dataset creation & FITS export
 │   └── util.py              # Mathematical profiles & utilities
-└── tests/                   # Automated pytest suite
+├── examples/                # Jupyter notebook tutorials 
+├── tests/                   # Automated pytest suite
+└── docs/assets/logo.png     # IFUL package logo
 ```
 
 ---
