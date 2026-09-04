@@ -12,7 +12,7 @@ This directory contains demonstration notebooks for simulating mock IFU observat
 
 ---
 
-## 2. Step-by-Step Modeling Workflow (MUSE Carousel Lens Data)
+## 2. Step-by-Step Modeling Workflow (VLT MUSE Carousel Lens Data)
 
 The `s4c_*` notebooks provide an end-to-end pipeline for modeling real MUSE IFU data of the Carousel lens system ([Sheu et al. 2024](https://iopscience.iop.org/article/10.3847/1538-4357/ad65d3)). The recommended running order is as follows:
 
