@@ -13,11 +13,7 @@ A Python pipeline for joint-modeling and simulation of strong gravitational lens
 
 Strong gravitational lensing is a cornerstone probe of observational cosmology—enabling independent measurements of the Hubble constant ($H_0$) to break the Hubble tension via time-delay cosmography, constraining the dark energy equation-of-state ($w$) and matter density ($\Omega_{\rm m, 0}$) via compound lensing systems, and probing dark matter substructure and high-redshift galaxy structures. All of these cosmological and astrophysical applications fundamentally depend on the ability to precisely and accurately model the lensing mass distribution.
 
-Traditional lens modeling pipelines rely almost exclusively on 2D imaging data (lensed image positions and brightness arcs), occasionally supplemented by 1D integrated slit spectroscopy of the deflector galaxy. However, imaging-only pipelines face key limitations:
-1. **Mass-Sheet and Profile Degeneracies**: Imaging constraints alone often leave the radial mass slope and mass profile parameters underspecified.
-2. **Lens/Source Light Contamination**: Bright deflector galaxy light can overlap with source arcs and obscure faint, demagnified central images inside the Einstein radius that strongly constrain the inner mass slope.
-
-**`IFUL` (Integral Field Unit Lensing)** overcomes these limitations by introducing an **end-to-end forward-modeling framework** that incorporates the spatially resolved dynamics of the source galaxy directly into the macro lens model. Observed with modern Integral Field Spectroscopy instruments (e.g., *JWST* NIRSpec, VLT MUSE, Keck KCWI/KCRM, and OSIRIS), `IFUL` forward-models every individual spatial pixel (spaxel) in the 3D IFU datacube from a joint parameterization of:
+**`IFUL` (Integral Field Unit Lensing)** introduces an **end-to-end forward-modeling framework** that incorporates the spatially resolved dynamics of the source galaxy directly into the macro lens model. Observed with modern Integral Field Spectroscopy instruments (e.g., *JWST* NIRSpec, VLT MUSE, Keck KCWI/KCRM, and OSIRIS), `IFUL` forward-models every individual spatial pixel (spaxel) in the 3D IFU datacube from a joint parameterization of:
 - **Macro Lens Mass & Light Profiles** (via [`lenstronomy`](https://github.com/lenstronomy/lenstronomy), or binned profiles),
 - **Source Line-of-Sight Velocity Fields ($v_{\mathrm{los}}$)** (Arctan, Tanh, Multi-parameter, or binned profiles),
 - **Source Velocity Dispersion Fields ($\sigma_v$)** (Exponential, constant, Keplerian, or binned profiles).
