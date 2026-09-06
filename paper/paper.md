@@ -25,9 +25,18 @@ While traditional gravitational lens modeling tools rely primarily on two-dimens
 
 # Statement of need
 
+Strong gravitational lens modeling has entered a regime where precision cosmography and mass profile determinations are primarily limited by systematic modeling uncertainties rather than statistical noise. Traditional lens modeling pipelines rely on two-dimensional photometric imaging. While three-dimensional Integral Field Unit (IFU) spectroscopy—from space and ground-based observatories such as *JWST* (NIRSpec, MIRI), VLT (MUSE, ERIS), Keck (KCWI/KCRM), and ALMA—is routinely acquired for lensing fields, these datacubes are typically underutilized. In conventional workflows, IFU data are restricted to measuring integrated deflector stellar velocity dispersions or confirming source galaxy redshifts, discarding the rich three-dimensional spatial-spectral information contained in individual spaxels.
 
+`IFUL` addresses several critical physical and methodological challenges in strong gravitational lensing:
+- **Kinematic Markers as Constraints**: When a source galaxy exhibits coherent rotation or dynamic structure, velocity gradients serve as spatial markers across multiple lensed images. Mapping these kinematic features in the image plane provides powerful complementary constraints on the lens mass profile.
+- **Continuum Subtraction & Image Disambiguation**: By performing continuum subtraction across the 3D datacube, `IFUL` isolates narrow emission lines belonging to the background source galaxy. This removes severe flux contamination from the bright foreground lens, unblending overlapping components and revealing faint or hidden counter-images that might otherwise remain buried under lens continuum light.
+- **Systematic Uncertainties & Degeneracies**: As lens modeling becomes systematic-dominated, `IFUL` provides a novel, independent modeling avenue. Jointly modeling spatial flux and source velocity fields ($v_{\mathrm{los}}$ and $\sigma_v$) helps break classic mass profile degeneracies (such as radial slope and mass-sheet transformations) that cannot be resolved by 2D imaging alone. General improvements to lens mass modeling directly benefit diverse science goals, including time-delay cosmography ($H_0$), dark matter substructure searches, and high-redshift galaxy kinematic structure.
 
-# State of the field                                                                                                                  
+Despite the growing availability of high-resolution IFU observations from current facilities and upcoming Extremely Large Telescope IFU instruments (such as ELT/HARMONI, ELT/MICADO, and TMT/IRIS), there is currently no existing open-source software dedicated to full 3D forward-modeling of lensed IFU datacubes. Individual research groups attempting 3D lens modeling must write custom, non-standardized codebases from scratch, posing a major barrier to entry and hindering scientific reproducibility. `IFUL` fills this software gap by delivering an open-source, modular, and user-friendly Python package built to interface with established lens modeling tools like `lenstronomy` [@lenstronomy2018; @lenstronomy2021].
+
+`IFUL` is designed for astronomers, astrophysicists, and observational cosmologists working on strong gravitational lensing, high-redshift galaxy kinematics, and 3D spectroscopic analysis.
+
+# State of the field
 
 
 
