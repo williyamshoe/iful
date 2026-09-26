@@ -987,9 +987,9 @@ def gen_obs_gif(data_datacube, mask_3d, waves, name, overwrite=True, spectrum=No
         plt.plot(waves, spectrum, color='blue', lw=2)
         plt.axvline(x=w, color='red', linestyle='--', lw=1.5)
         plt.xlim((np.min(waves), np.max(waves)))
-        plt.xlabel("Wavelength (Å)")
-        plt.ylabel("Relative Amplitude")
-        plt.title("Spectrum")
+        plt.xlabel("wavelength (Å)")
+        plt.ylabel("relative amplitude")
+        plt.title("spectrum")
         plt.tight_layout()
         imfile = f"temp/{i}.png"
         plt.savefig(imfile, bbox_inches="tight")
