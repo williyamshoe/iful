@@ -186,6 +186,12 @@ iful/
 
 ---
 
+## Documentation
+
+See [https://iful.readthedocs.io/en/latest/](https://iful.readthedocs.io/en/latest/) for the readthedocs API documentation.
+
+---
+
 ## Running Tests
 
 To run the automated test suite locally:
