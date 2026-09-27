@@ -16,6 +16,7 @@ napoleon_numpy_docstring = True
 napoleon_google_docstring = False
 autosummary_generate = True
 autodoc_default_options = {"members": True, "undoc-members": True, "show-inheritance": True}
+myst_enable_extensions = ["dollarmath"]
 
 nb_execution_mode = "off"
 
