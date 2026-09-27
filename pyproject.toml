@@ -38,6 +38,12 @@ test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
 ]
+docs = [
+    "sphinx>=7",
+    "furo",                 
+    "myst-nb",              
+    "sphinx-copybutton",
+]
 
 [project.urls]
 Homepage = "https://github.com/williyamshoe/iful"
