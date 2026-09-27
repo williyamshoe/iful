@@ -1,4 +1,4 @@
-project = "iful"
+project = "IFUL"
 author = "William Sheu"
 release = "0.1.0"
 

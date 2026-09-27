@@ -1,4 +1,4 @@
-# iful
+# IFUL
 
 Integral Field Unit Lensing pipeline for joint-modeling strong lens convergence and source kinematics.
 
