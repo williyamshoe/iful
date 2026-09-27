@@ -5,6 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/iful.svg)](https://pypi.org/project/iful/)
 [![Python Versions](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
 [![Python Versions](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation Status](https://readthedocs.org/projects/iful/badge/?version=latest)](https://iful.readthedocs.io/en/latest/)
 <!-- badges: end -->
 
 A Python pipeline for joint-modeling and simulation of strong gravitational lensing and their source kinematics.
