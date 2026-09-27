@@ -12,6 +12,7 @@ A Python pipeline for joint-modeling and simulation of strong gravitational lens
 
 # <img src="docs/assets/animation_iful_final.gif" align="center" height="250" alt="" />
 
+<!-- docs-intro-start -->
 Strong gravitational lensing is a cornerstone probe of observational cosmology—enabling independent measurements of the Hubble constant ($H_0$) to break the Hubble tension via time-delay cosmography, constraining the dark energy equation-of-state ($w$) and matter density ($\Omega_{\rm m, 0}$) via compound lensing systems, and probing dark matter substructure and high-redshift galaxy structures. All of these cosmological and astrophysical applications fundamentally depend on the ability to precisely and accurately model the lensing mass distribution.
 
 **`IFUL` (Integral Field Unit Lensing)** introduces an **end-to-end forward-modeling framework** that incorporates the spatially resolved dynamics of the source galaxy directly into the macro lens model. Observed with modern Integral Field Spectroscopy instruments (e.g., *JWST* NIRSpec, VLT MUSE, Keck KCWI/KCRM, and OSIRIS), `IFUL` forward-models every individual spatial pixel (spaxel) in the 3D IFU datacube from a joint parameterization of:
@@ -34,6 +35,7 @@ By leveraging dynamical markers within lensed arcs as additional kinematic const
 
 ---
 
+<!-- docs-intro-end -->
 ## Installation
 
 ### Option 1: Install via `pip` (Recommended)
@@ -60,6 +62,7 @@ pip install -e .[test]
 
 ---
 
+<!-- docs-rest-start -->
 ## Quickstart Example
 
 Here is a quick example creating a mock lensed IFU datacube and configuring the lensing and kinematics models:
@@ -160,7 +163,7 @@ from IPython.display import Image as imp
 imp(filename=gif_filename)
 ```
 
-For comprehensive tutorials, check out the notebooks in the [`examples/`](examples/) directory. In particular, see the `s4c_` series of notebooks for a tutorial on simulating and fitting to real data.
+For comprehensive tutorials, check out the notebooks in the [`examples/`](https://github.com/williyamshoe/iful/tree/main/examples) directory. In particular, see the `s4c_` series of notebooks for a tutorial on simulating and fitting to real data.
 
 ---
 
@@ -197,13 +200,13 @@ pytest -v --cov=iful
 
 Contributions, bug reports, and feature requests are welcome! Please feel free to open an issue or submit a pull request on GitHub.
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details on guidelines and local setup.
+See [`CONTRIBUTING.md`](https://github.com/williyamshoe/iful/blob/main/CONTRIBUTING.md) for details on guidelines and local setup.
 
 ---
 
 ## License
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
+Distributed under the **MIT License**. See [`LICENSE`](https://github.com/williyamshoe/iful/blob/main/LICENSE) for details.
 
 ---
 
