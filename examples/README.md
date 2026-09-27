@@ -14,7 +14,7 @@ This directory contains demonstration notebooks for simulating mock IFU observat
 
 ## 2. Step-by-Step Modeling Workflow (VLT MUSE Carousel Lens Data)
 
-The `s4c_*` notebooks provide an end-to-end pipeline for modeling real MUSE IFU data of the Carousel lens system ([Sheu et al. 2024](https://iopscience.iop.org/article/10.3847/1538-4357/ad65d3)). The recommended running order is as follows:
+The `s4c_*` notebooks provide an end-to-end pipeline for modeling real MUSE IFU data of the Carousel lens system ([Sheu et al. 2024](https://iopscience.iop.org/article/10.3847/1538-4357/ad65d3)). Notice the `do_example_run` variable at the beginning of some of the notebooks; when set to `True`, the notebooks will run a fast demonstration run which will run in a reasonable time. The recommended running order is as follows:
 
 ### **1. `s4c_init.ipynb`**
 * **Datacube Initialization & Preprocessing**

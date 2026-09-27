@@ -65,11 +65,13 @@ Here is a quick example creating a mock lensed IFU datacube and configuring the 
 
 ```python
 import numpy as np
+from iful.util import *
 from iful.simulation_api import (
     SimulationMockImageSet, 
     create_simulation_models, 
     run_galaxy_simulation, 
-    add_instrument_noise
+    add_instrument_noise,
+    export_to_fits
 )
 
 psf_path = "path/to/psf"
@@ -130,6 +132,31 @@ simulated_datacube_noisy, bg_noise = add_instrument_noise(
     bg_noise_std_frac=0.02, 
     seed=42
 )
+
+# Save simulated datacube using simulation API
+fits_filename = "simulated_lensed_galaxy_datacube.fits"
+export_to_fits(
+    fits_filename,
+    simulated_datacube_noisy,
+    imset.wavelengths_full,
+    imset.aux_info["header_wcs"],
+    redshift=zs,
+    exptime=1000.0
+)
+
+# Display the generated GIF
+gif_filename = "simulated_datacube.gif"
+gen_obs_gif(
+    simulated_datacube_noisy,
+    ifulmodel.datacube_mask,
+    imset.wavelength,
+    gif_filename,
+    overwrite=True,
+    pixscale=0.075
+)
+
+from IPython.display import Image as imp
+imp(filename=gif_filename)
 ```
 
 For comprehensive tutorials, check out the notebooks in the [`examples/`](examples/) directory. In particular, see the `s4c_` series of notebooks for a tutorial on simulating and fitting to real data.
