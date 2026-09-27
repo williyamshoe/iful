@@ -25,3 +25,7 @@ htmlcov/
 
 # Local model cache
 **/s4_models/
+
+# Local docs
+docs/_build/
+docs/generated/
