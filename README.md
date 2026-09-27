@@ -180,8 +180,8 @@ iful/
 │   └── util.py              # Mathematical profiles & utilities
 ├── examples/                # Jupyter notebook tutorials 
 ├── tests/                   # Automated pytest suite
-├── paper/                   # Paper-related files
-└── docs/assets/             # README figures
+├── docs/                    # Documentation assets
+└── paper/                   # Paper-related files
 ```
 
 ---
