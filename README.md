@@ -1,4 +1,4 @@
-# IFUL: Integral Field Unit Lensing <img src="docs/assets/logo.png" align="right" height="138" alt="" />
+# IFUL: Integral Field Unit Lensing <img src="https://raw.githubusercontent.com/williyamshoe/iful/main/docs/assets/logo.png" align="right" height="138" alt="" />
 
 <!-- badges: start -->
 [![Tests Status](https://github.com/williyamshoe/iful/actions/workflows/test.yml/badge.svg)](https://github.com/williyamshoe/iful/actions/workflows/test.yml)
@@ -10,7 +10,7 @@
 
 A Python pipeline for joint-modeling and simulation of strong gravitational lensing and their source kinematics.
 
-# <img src="docs/assets/animation_iful_final.gif" align="center" height="250" alt="" />
+# <img src="https://raw.githubusercontent.com/williyamshoe/iful/main/docs/assets/animation_iful_final.gif" align="center" height="250" alt="" />
 
 <!-- docs-intro-start -->
 Strong gravitational lensing is a cornerstone probe of observational cosmology—enabling independent measurements of the Hubble constant ($H_0$) to break the Hubble tension via time-delay cosmography, constraining the dark energy equation-of-state ($w$) and matter density ($\Omega_{\rm m, 0}$) via compound lensing systems, and probing dark matter substructure and high-redshift galaxy structures. All of these cosmological and astrophysical applications fundamentally depend on the ability to precisely and accurately model the lensing mass distribution.
