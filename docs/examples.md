@@ -1,5 +1,9 @@
 # Examples
 
+```{include} ../examples/README.md
+:start-line: 2
+```
+
 ```{toctree}
 :maxdepth: 1
 
