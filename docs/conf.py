@@ -23,4 +23,4 @@ nb_execution_mode = "off"
 html_theme = "furo"
 html_logo = "assets/logo.png"
 html_static_path = []
-exclude_patterns = ["_build", "**.ipynb_checkpoints"]
+exclude_patterns = ["_build", "**.ipynb_checkpoints", "examples/README.md"]
