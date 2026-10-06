@@ -192,16 +192,6 @@ See [https://iful.readthedocs.io/en/latest/](https://iful.readthedocs.io/en/late
 
 ---
 
-## Running Tests
-
-To run the automated test suite locally:
-
-```bash
-pytest -v --cov=iful
-```
-
----
-
 ## Contributing
 
 Contributions, bug reports, and feature requests are welcome! Please feel free to open an issue or submit a pull request on GitHub.
