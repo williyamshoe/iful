@@ -5,7 +5,7 @@ This package provides tools for modeling and simulating lensed Integral Field Un
 datacubes, including 2D photometric modeling, 3D kinematic modeling, and mock simulation APIs.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .image_set import ImageSet
 from .flat_modeling import FlatModel
