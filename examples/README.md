@@ -29,10 +29,10 @@ The `s4c_*` notebooks provide an end-to-end pipeline for modeling real MUSE IFU 
 * **Extended 2D Source Modeling with Shapelets**
 * Builds off `s4c_flat_modeling_pl.ipynb` by incorporating an additional shapelets component to model non-Sersic source light features.
 
-### **3. `s4c_iful_modeling_pl_bh.ipynb`**
+### **3. `s4c_iful_modeling_pl.ipynb`**
 * **3D Datacube & Kinematic Modeling (`IFULModel`)**
 * Performs 3D IFU datacube modeling using the 2D lens parameterization from `s4c_flat_modeling_pl.ipynb` as a starting point.
-* Models the source galaxy's 3D kinematic profiles, including Line-of-Sight (LOS) velocity, velocity dispersion (with central supermassive black hole potential), and flux distribution.
+* Models the source galaxy's 3D kinematic profiles, including Line-of-Sight (LOS) velocity, velocity dispersion, and flux distribution.
 
 ### **4. `s4c_compare_dist.ipynb`**
 * **Model Posterior Comparison & Visualization**
