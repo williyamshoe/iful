@@ -98,7 +98,7 @@ fm, ifulmodel = create_simulation_models(
     theta_E=1.0,
     source_x=-0.01,
     source_y=-0.01,
-    iful_profiles=["ARCTAN", "CONSTANT_FITTED_BH", "SERSIC"]
+    iful_profiles=["ARCTAN", "EXPONENTIAL", "SERSIC"]
 )
 
 # Extract parameters
@@ -111,8 +111,8 @@ sim_params = [
     0.3, 1.2, 0.0, 0.0, -0.01, -0.01,
     # v_los (4 params): v_pa, v_a, v_b, v_c (sys_vel = zs * c)
     -45.0, 300.0, 15, zs * 299792,
-    # v_disp (2 params): constant velocity dispersion of 50 km/s and log10 BH mass of 9.0
-    50.0, 9.0,
+    # v_disp (3 params): central_vd, scale_rad, flat_vd
+    40.0, 0.02, 175.0,
     # flx (1 param): scale factor
     1e6
 ]
