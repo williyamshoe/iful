@@ -1,6 +1,6 @@
 project = "IFUL"
 author = "William Sheu"
-release = "0.1.2"
+release = "1.0.0"
 
 extensions = [
     "sphinx.ext.autodoc",
