@@ -11,6 +11,7 @@ import scipy as sp
 import copy
 import gc
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import matplotlib.cm as cm
 from scipy.stats import norm
 from scipy.optimize import minimize
@@ -996,7 +997,10 @@ class IFULModel:
         axs[0].set_ylabel("Dec offset (arcsecs)")
         fig.colorbar(col, ax=axs[0], label="LOS Velocity [km/s]")
 
-        cmap = cm.get_cmap('viridis').copy()
+        try:
+            cmap = cm.get_cmap('viridis').copy()
+        except:
+            cmap = mpl.colormaps['viridis']
         cmap.set_bad(color='black')
 
         # flat_idx = np.argsort(v_disp_img, axis=None)[-1:]
