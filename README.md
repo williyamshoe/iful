@@ -38,7 +38,7 @@ By leveraging dynamical markers within lensed arcs as additional kinematic const
 <!-- docs-intro-end -->
 ## Installation
 
-### Option 1: Install via `pip` (Recommended, but not yet implemented...)
+### Option 1: Install via `pip` (Recommended)
 
 ```bash
 pip install iful
@@ -203,11 +203,11 @@ See [`CONTRIBUTING.md`](https://github.com/williyamshoe/iful/blob/main/CONTRIBUT
 ## License
 
 Distributed under the **MIT License**. See [`LICENSE`](https://github.com/williyamshoe/iful/blob/main/LICENSE) for details.
-
+<!-- 
 ---
 
 ## Citation
 
 If you use **IFUL** in your research, please cite:
 
-TODO
+TODO -->
