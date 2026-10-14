@@ -9,10 +9,15 @@ authors:
   - name: William Sheu
     orcid: 0000-0003-1889-0227
     affiliation: 1
+  - name: Ruoxin Zhang
+    orcid: 0009-0002-2190-233X
+    affiliation: 2
 affiliations:
  - name: Department of Physics and Astronomy, University of California, Los Angeles, CA 90095, USA
    index: 1
-date: 8 September 2026
+ - name: Google, Mountain View, CA 94043, USA
+   index: 2
+date: 13 October 2026
 bibliography: paper.bib
 ---
 
