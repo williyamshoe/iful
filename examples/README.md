@@ -16,24 +16,24 @@ These are demonstration notebooks for simulating mock IFU observations and perfo
 
 The `s4c_*` notebooks provide an end-to-end pipeline for modeling real MUSE IFU data of the Carousel lens system ([Sheu et al. 2024](https://iopscience.iop.org/article/10.3847/1538-4357/ad65d3)). The truncated starting files can be found [here](https://github.com/williyamshoe/iful/blob/main/examples/example_data). Notice the `do_example_run` variable at the beginning of some of the notebooks; when set to `True`, the notebooks will run a fast demonstration run which will run within a reasonable time. The recommended running order is as follows:
 
-### **1. `s4c_init.ipynb`**
+### **a. `s4c_init.ipynb`**
 * **Datacube Initialization & Preprocessing**
 * Initializes the 3D datacube and performs spaxel-by-spaxel background continuum subtraction to isolate the lensed source galaxy signal.
 
-### **2. `s4c_flat_modeling_pl.ipynb`**
+### **b. `s4c_flat_modeling_pl.ipynb`**
 * **2D Photometric Modeling (Lenstronomy)**
 * Performs 2D photometric image modeling on the white-light collapsed image using Lenstronomy.
 * Generates an initial parameterization using a primary power-law (EPL) lens mass convergence and a single Sersic source light profile.
 
-### **2.5. `s4c_flat_shapelets_pl.ipynb`** *(Optional)*
+### **c. `s4c_flat_shapelets_pl.ipynb`** *(Optional)*
 * **Extended 2D Source Modeling with Shapelets**
 * Builds off `s4c_flat_modeling_pl.ipynb` by incorporating an additional shapelets component to model non-Sersic source light features.
 
-### **3. `s4c_iful_modeling_pl.ipynb`**
+### **d. `s4c_iful_modeling_pl.ipynb`**
 * **3D Datacube & Kinematic Modeling (`IFULModel`)**
 * Performs 3D IFU datacube modeling using the 2D lens parameterization from `s4c_flat_modeling_pl.ipynb` as a starting point.
 * Models the source galaxy's 3D kinematic profiles, including Line-of-Sight (LOS) velocity, velocity dispersion, and flux distribution.
 
-### **4. `s4c_compare_dist.ipynb`**
+### **e. `s4c_compare_dist.ipynb`**
 * **Model Posterior Comparison & Visualization**
 * Plots and compares parameter posterior distributions and corner plots across the different model parameterizations.
