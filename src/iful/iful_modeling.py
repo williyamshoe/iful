@@ -1043,7 +1043,7 @@ class IFULModel:
         elif profile_name == "POWER_LAW":
             return self.get_power_law_v_given_xy_bin, 2
         elif profile_name == "EXPONENTIAL":
-            return self.get_exponential_v_given_xy_bin, 2
+            return self.get_exponential_v_given_xy_bin, 3
         elif profile_name == "POWER_LAW_BH":
             return self.get_power_law_bh_v_given_xy_bin, 3
         elif profile_name == "CONSTANT_FIXED":
@@ -1307,7 +1307,7 @@ class IFULModel:
     @staticmethod
     def get_exponential_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
         """
-        Evaluate exponential radial dispersion profile: central_vd * exp(-dist / scale_rad).
+        Evaluate exponential radial dispersion profile: (flat_vd**2 + central_vd**2 * exp(-0.5 * dist**2 / scale_rad**2))**0.5.
 
         Parameters
         ----------
@@ -1318,7 +1318,7 @@ class IFULModel:
         aux_params : list
             `[kwargs_source, sm, constant_val, d_s]`.
         fitted_params : list of float
-            `[central_vd, scale_rad]`.
+            `[central_vd, scale_rad, flat_vd]`.
 
         Returns
         -------
@@ -1326,13 +1326,13 @@ class IFULModel:
             Evaluated exponential velocity dispersion values.
         """
         # aux_params: [kwargs_source, sm, constant_val, d_s]
-        # fitted_params: [central_vd, scale_rad]
+        # fitted_params: [central_vd, scale_rad, flat_vd]
 
         x = np.array([x]) if not isinstance(x, (list, np.ndarray)) else np.array(x)
         y = np.array([y]) if not isinstance(y, (list, np.ndarray)) else np.array(y)
 
         kwargs_source = aux_params[0]
-        central_vd, scale_rad = fitted_params
+        central_vd, scale_rad, flat_vd = fitted_params
 
         x_, y_ = param_util.transform_e1e2_product_average(
             x - kwargs_source[0]["center_x"],
@@ -1343,7 +1343,7 @@ class IFULModel:
             center_y=0,
         )
         dist = (x_**2 + y_**2) ** 0.5
-        return central_vd * np.exp(-1 * dist / scale_rad)
+        return (flat_vd**2 + central_vd**2 * np.exp(-0.5 * dist**2 / scale_rad**2))**0.5
 
     @staticmethod
     def get_power_law_bh_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
