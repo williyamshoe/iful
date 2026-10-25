@@ -30,7 +30,7 @@ By leveraging dynamical markers within lensed arcs as additional kinematic const
 - **Flexible Kinematic Profiles**: Support for standard kinematic models including Arctan velocity curves, Tanh profiles, multi-parameter profiles, central supermassive black hole (BH) influence, and custom dispersion profiles.
 - **Datacube Processing (`ImageSet`)**: Built-in continuum subtraction, outlier rejection (IQR), custom aperture masking, white-light image collapse, and noise estimation.
 - **Fast Linear Inversion**: Accelerated linear solver for source plane flux maps to reduce MCMC/optimization overhead.
-- **Simulation API (`simulation_api`)**: Easily generate mock JWST NIRSpec or ground-based IFU lensed galaxy datacubes with realistic PSF convolution and instrument noise for mock challenges and forecast studies.
+- **Simulation API (`simulation_api`)**: Generate mock *JWST* NIRSpec or ground-based IFU lensed galaxy datacubes with realistic PSF convolution and instrument noise for mock challenges and forecast studies.
 - **Power Binning Support**: Integrated adaptive Power spatial binning (an improvement to traditional Voronoi binning) using `powerbin`.
 
 ---
