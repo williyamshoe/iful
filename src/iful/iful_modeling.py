@@ -1265,7 +1265,7 @@ class IFULModel:
         c_x, c_y = kwargs_source[0]["center_x"], kwargs_source[0]["center_y"]
         dist = ((x - c_x) ** 2 + (y - c_y) ** 2) ** 0.5
 
-        return norm_dist(amp, 0, sigma_intrinsic, dist)
+        return norm_dist(amp, 0, sigma_model, dist)
             
     @staticmethod
     def get_power_law_v_given_xy_bin(x, y, binno, aux_params, fitted_params):
