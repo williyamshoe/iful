@@ -203,11 +203,29 @@ See [`CONTRIBUTING.md`](https://github.com/williyamshoe/iful/blob/main/CONTRIBUT
 ## License
 
 Distributed under the **MIT License**. See [`LICENSE`](https://github.com/williyamshoe/iful/blob/main/LICENSE) for details.
-<!-- 
+
 ---
 
 ## Citation
 
 If you use **IFUL** in your research, please cite:
 
-TODO -->
+
+```
+@ARTICLE{Sheu2026_carousel3,
+       author = {{Sheu}, William and {Huang}, Xiaosheng and {Barone}, Tania M. and {Bian}, Fuyan and {Cikota}, Aleksandar and {Glazebrook}, Karl and {Jeltema}, Tesla and {Odell}, Evan and {O'Donnell}, Jackson H. and {Upson}, Linus and et al.},
+        title = "{The Carousel Lens III: Joint lens convergence and source kinematic modeling}",
+      journal = {arXiv e-prints},
+     keywords = {Astrophysics of Galaxies, Cosmology and Nongalactic Astrophysics},
+         year = 2026,
+        month = oct,
+          eid = {arXiv:2610.37971},
+        pages = {arXiv:2610.37971},
+          doi = {10.48550/arXiv.2610.37971},
+archivePrefix = {arXiv},
+       eprint = {2610.37971},
+ primaryClass = {astro-ph.GA},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2026arXiv261037971S},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+```
