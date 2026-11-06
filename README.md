@@ -22,8 +22,6 @@ Strong gravitational lensing is a cornerstone probe of observational cosmology�
 
 By leveraging dynamical markers within lensed arcs as additional kinematic constraints, isolating source emission line light to completely remove lens-light contamination, and reconstructing unlensed source dynamics across multiple lensed images, **`IFUL`** provides tighter constraints on lens mass profiles, profile slopes, and high-redshift source dynamics than imaging data alone.
 
----
-
 ## Key Features
 
 - **Joint Lensing & Kinematics Modeling**: Simultaneously model 2D image-plane lensing light/mass distributions and 3D IFU datacube velocity and dispersion fields.
@@ -32,8 +30,6 @@ By leveraging dynamical markers within lensed arcs as additional kinematic const
 - **Fast Linear Inversion**: Accelerated linear solver for source plane flux maps to reduce MCMC/optimization overhead.
 - **Simulation API (`simulation_api`)**: Generate mock *JWST* NIRSpec or ground-based IFU lensed galaxy datacubes with realistic PSF convolution and instrument noise for mock challenges and forecast studies.
 - **Power Binning Support**: Integrated adaptive Power spatial binning (an improvement to traditional Voronoi binning) using `powerbin`.
-
----
 
 <!-- docs-intro-end -->
 ## Installation
@@ -59,8 +55,6 @@ To install with testing dependencies:
 ```bash
 pip install -e .[test]
 ```
-
----
 
 <!-- docs-rest-start -->
 ## Quickstart Example
@@ -165,8 +159,6 @@ imp(filename=gif_filename)
 
 For comprehensive tutorials, check out the notebooks in the [`examples/`](https://github.com/williyamshoe/iful/tree/main/examples) directory. In particular, see the `s4c_` series of notebooks for a tutorial on simulating and fitting to real data.
 
----
-
 ## Repository & Package Structure
 
 ```
@@ -184,13 +176,9 @@ iful/
 └── paper/                   # Paper-related files
 ```
 
----
-
 ## Documentation
 
 See [https://iful.readthedocs.io/en/latest/](https://iful.readthedocs.io/en/latest/) for the readthedocs API documentation.
-
----
 
 ## Contributing
 
@@ -198,13 +186,9 @@ Contributions, bug reports, and feature requests are welcome! Please feel free t
 
 See [`CONTRIBUTING.md`](https://github.com/williyamshoe/iful/blob/main/CONTRIBUTING.md) for details on guidelines and local setup.
 
----
-
 ## License
 
 Distributed under the **MIT License**. See [`LICENSE`](https://github.com/williyamshoe/iful/blob/main/LICENSE) for details.
-
----
 
 ## Citation
 
