@@ -473,6 +473,46 @@ class IFULModel:
         return res
 
 
+    def unit_line_profile(self, z_los, sigma_total):
+        """
+        Evaluate the signed, unit-amplitude line profile for every source-plane pixel.
+
+        Each line i contributes `sign_i * ratio_i * exp(-0.5 * ((w - lambda_i (1 + z)) / sigma)^2)`,
+        where `sign_i` is +1 for emission and -1 for absorption lines (`ImageSet.line_types`),
+        so the flux profile multiplying this template is a positive line strength / depth.
+
+        Parameters
+        ----------
+        z_los : numpy.ndarray
+            Redshift per pixel, shape (N_pix,).
+        sigma_total : numpy.ndarray
+            Total (intrinsic + instrumental) line width in Angstroms per pixel, shape (N_pix,).
+
+        Returns
+        -------
+        numpy.ndarray
+            Line profile array of shape (N_pix, N_wave); rows with invalid z or sigma are zero.
+        """
+        w = self.imset.wavelength
+        rp = np.array(self.imset.restwave_peaks)
+        ratios = np.array([1] + list(self.imset.init_spec_fit[3 : 3 + len(rp) - 1]))
+        weights = ratios * self.imset.line_signs
+
+        z_grid = z_los[:, np.newaxis, np.newaxis]
+        sig_grid = sigma_total[:, np.newaxis, np.newaxis]
+        w_grid = w[np.newaxis, :, np.newaxis]
+        rp_grid = rp[np.newaxis, np.newaxis, :]
+        weight_grid = weights[np.newaxis, np.newaxis, :]
+
+        mu = rp_grid * (1.0 + z_grid)
+        sig_grid_safe = np.where(sig_grid <= 0, 1.0, sig_grid)
+        diff_sig = (w_grid - mu) / sig_grid_safe
+        profile = np.sum(weight_grid * np.exp(-0.5 * diff_sig**2), axis=2)
+
+        nan_mask = np.isnan(z_los) | np.isnan(sigma_total) | (sigma_total <= 0)
+        profile[nan_mask] = 0.0
+        return profile
+
     def generate_residuals(self, all_fitted_params, return_datacube=False, linear_solve=False, vd_plots=False, trim_vd_plot=0):
         """
         Evaluate 3D datacube model residuals (chi-squared loss) for a set of input parameters.
@@ -559,26 +599,7 @@ class IFULModel:
         # LINEAR INVERSION BLOCK
         # ==========================================
         if linear_solve:
-            # Vectorized unit_source_light calculation
-            w = self.imset.wavelength
-            rp = np.array(self.imset.restwave_peaks)
-            ratios_f = np.array([1] + list(self.imset.init_spec_fit[3:]))
-
-            z_grid = z_los[:, np.newaxis, np.newaxis]
-            sig_grid = sigma_total[:, np.newaxis, np.newaxis]
-            w_grid = w[np.newaxis, :, np.newaxis]
-            rp_grid = rp[np.newaxis, np.newaxis, :]
-            ratio_grid = ratios_f[np.newaxis, np.newaxis, :]
-
-            mu = rp_grid * (1.0 + z_grid)
-            diff = w_grid - mu
-            sig_grid_safe = np.where(sig_grid <= 0, 1.0, sig_grid)
-            diff_sig = diff / sig_grid_safe
-            gauss = ratio_grid * np.exp(-0.5 * diff_sig**2)
-            unit_source_light = np.sum(gauss, axis=2)
-
-            nan_mask = np.isnan(z_los) | np.isnan(sigma_total) | (sigma_total <= 0)
-            unit_source_light[nan_mask] = 0.0
+            unit_source_light = self.unit_line_profile(z_los, sigma_total)
 
             mask_bool = self.datacube_mask.astype(bool)
             valid_pixels = mask_bool # Keeping your custom masking rule
@@ -644,27 +665,10 @@ class IFULModel:
         # ==========================================
         flxs = self.flx_fnc(x_source_vals, y_source_vals, binno, aux_params, flx_params)
 
-        # Vectorized source_light calculation
-        w = self.imset.wavelength
-        rp = np.array(self.imset.restwave_peaks)
-        ratios_f = np.array([1] + list(self.imset.init_spec_fit[3:]))
-
-        z_grid = z_los[:, np.newaxis, np.newaxis]
-        sig_grid = sigma_total[:, np.newaxis, np.newaxis]
-        w_grid = w[np.newaxis, :, np.newaxis]
-        rp_grid = rp[np.newaxis, np.newaxis, :]
-        ratio_grid = ratios_f[np.newaxis, np.newaxis, :]
-        flx_grid = flxs[:, np.newaxis, np.newaxis]
-
-        mu = rp_grid * (1.0 + z_grid)
-        diff = w_grid - mu
-        sig_grid_safe = np.where(sig_grid <= 0, 1.0, sig_grid)
-        diff_sig = diff / sig_grid_safe
-        gauss = flx_grid * ratio_grid * np.exp(-0.5 * diff_sig**2)
-        source_light = np.nan_to_num(np.sum(gauss, axis=2), nan=0.0)
-
-        nan_mask = np.isnan(z_los) | np.isnan(sigma_total) | (sigma_total <= 0)
-        source_light[nan_mask] = 0.0
+        # Absorption lines enter with a negative sign, so flxs is a positive line depth
+        source_light = np.nan_to_num(
+            self.unit_line_profile(z_los, sigma_total) * flxs[:, np.newaxis], nan=0.0
+        )
 
         model_datacube = []
         for ii in np.arange(source_light.shape[1]):
@@ -744,11 +748,12 @@ class IFULModel:
             # axs[1].set_ylabel("Dec offset (arcsecs)")
             fig.colorbar(col, ax=axs[1], label="velocity dispersion (convolved)")
             
-            col = axs[2].imshow(np.sum(model_datacube, axis=0), extent=extent)
+            wl_sign = self.imset.whitelight_sign
+            col = axs[2].imshow(wl_sign * np.sum(model_datacube, axis=0), extent=extent)
             axs[2].invert_yaxis()
             axs[2].set_xlabel("RA offset (arcsecs)")
             # axs[2].set_ylabel("Dec offset (arcsecs)")
-            fig.colorbar(col, ax=axs[2], label="flux")
+            fig.colorbar(col, ax=axs[2], label="absorbed flux" if wl_sign < 0 else "flux")
         
         if return_datacube:
             if linear_solve:

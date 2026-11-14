@@ -58,7 +58,7 @@ class ImageSet:
         Rest-frame emission line peak wavelengths (Angstroms).
     """
 
-    def __init__(self, datacube, wavelengths, zs, pixscale, gap, spectra_background, var_datacube=None):
+    def __init__(self, datacube, wavelengths, zs, pixscale, gap, spectra_background, var_datacube=None, line_types=None):
         """
         Initialize an ImageSet object and perform continuum subtraction.
 
@@ -78,14 +78,66 @@ class ImageSet:
             Number of spectral channels at start and end used to measure continuum slope.
         var_datacube : numpy.ndarray, optional
             Variance datacube matching `datacube` shape. Default is None.
+        line_types : None, str, or list of str, optional
+            "emission" or "absorption" for each line in `restwave_peaks` (a single string
+            applies to all lines). Default None means all lines are emission. Absorption
+            lines are modeled as continuum-subtracted troughs with a positive depth profile.
         """
         self.zs = zs
         self.size = datacube.shape[0]
         self.pixscale = pixscale
         # self.wavelength_interval = wavelengths[1] - wavelengths[0]
         self.var_datacube = None
+        self.line_types = line_types
         self.continuum_subtraction(datacube, wavelengths, gap, spectra_background, var_datacube)
         self.aux_info = {}
+
+    @property
+    def line_signs(self):
+        """
+        numpy.ndarray : +1 / -1 sign per line in `restwave_peaks` (emission / absorption).
+        """
+        return line_types_to_signs(getattr(self, "line_types", None), len(self.restwave_peaks))
+
+    @property
+    def whitelight_sign(self):
+        """
+        float : -1 if every line is an absorption line, otherwise +1.
+
+        Continuum-subtracted absorption troughs are negative, so the collapsed white-light
+        image is multiplied by this sign to give a positive (absorbed-flux) image for the
+        2D lens modeling and outlier masking.
+        """
+        line_types = getattr(self, "line_types", None)
+        if line_types is None:
+            return 1.0
+        if isinstance(line_types, str):
+            line_types = [line_types]
+        signs = line_types_to_signs(line_types, len(line_types))
+        return -1.0 if np.all(signs < 0) else 1.0
+
+    def collapse_whitelight(self):
+        """
+        Collapse the continuum-subtracted datacube to a sign-corrected white-light image.
+
+        Returns
+        -------
+        numpy.ndarray
+            2D median-collapsed image, multiplied by `whitelight_sign`.
+        """
+        return self.whitelight_sign * np.nanmedian(self.datacube, axis=2)
+
+    def set_line_types(self, line_types):
+        """
+        Set line types and recompute the sign-corrected white-light image.
+
+        Parameters
+        ----------
+        line_types : None, str, or list of str
+            "emission" or "absorption" per line (or a single string for all lines).
+        """
+        self.line_types = line_types
+        self.datacube_whitelight = self.collapse_whitelight()
 
     def continuum_subtraction(self, datacube, wavelengths, gap, spectra_background, var_datacube=None):
         """
@@ -138,8 +190,8 @@ class ImageSet:
             self.var_datacube = None
         self.wavelength = wavelengths[np.min(trunc_inds) : np.max(trunc_inds) + 1]
 
-        # Generate 2D white light collapsed image
-        self.datacube_whitelight = np.nanmedian(self.datacube, axis=2)
+        # Generate 2D white light collapsed image (sign-corrected for absorption lines)
+        self.datacube_whitelight = self.collapse_whitelight()
         self.mask = np.ones(self.datacube_whitelight.shape)
 
         # Broadcast 2D mask to 3D cube shape
@@ -183,7 +235,7 @@ class ImageSet:
 
         bkg_std_cutout3d_img -= median_bkg_spec_3d
         self.datacube -= median_bkg_spec_3d
-        self.datacube_whitelight = np.nanmedian(self.datacube, axis=2)
+        self.datacube_whitelight = self.collapse_whitelight()
 
         # Compute 3D RMS noise level
         bkg_std_cutout3d = bkg_std_cutout3d_img.reshape(-1)
@@ -218,7 +270,8 @@ class ImageSet:
         vminmax : list of float, optional
             Display bounds `[vmin, vmax]` for visualization plot.
         """
-        t_whiteimage = np.nansum(self.datacube, axis=2)
+        # Sign-correct so absorption troughs are not clipped by the (tighter) lower IQR bound
+        t_whiteimage = self.whitelight_sign * np.nansum(self.datacube, axis=2)
 
         out_mask = get_outlier_mask_iqr(
             t_whiteimage, scale_l=scale_l, scale_u=scale_u
@@ -317,23 +370,29 @@ class ImageSet:
         plt.show()
 
     def get_initial_spec_fit(
-        self, restwave_peaks, init_spec_params, rewrite_zs=True, adjust_slope=False
+        self, restwave_peaks, init_spec_params, rewrite_zs=True, adjust_slope=False, line_types=None
     ):
         """
-        Fit emission line template model to extracted aperture spectrum.
+        Fit emission/absorption line template model to extracted aperture spectrum.
 
         Parameters
         ----------
         restwave_peaks : list of float
-            Rest-frame peak wavelengths for emission lines (Angstroms).
+            Rest-frame peak wavelengths for the spectral lines (Angstroms).
         init_spec_params : list of float
-            Initial parameters `[z, sigma_ang, amp_0, ratio_1, ratio_2, ...]`.
+            Initial parameters `[z, sigma_ang, amp_0, ratio_1, ratio_2, ...]`. For absorption
+            lines `amp_0` and the ratios are positive depths; the sign comes from `line_types`.
         rewrite_zs : bool, default=True
             If True, update `self.zs` attribute with best-fit redshift.
         adjust_slope : bool, default=False
             If True, include linear slope and baseline offset parameters in template.
+        line_types : None, str, or list of str, optional
+            If given, overrides `self.line_types` (and recomputes the white-light image).
         """
+        if line_types is not None:
+            self.set_line_types(line_types)
         self.restwave_peaks = restwave_peaks
+        line_types_to_signs(getattr(self, "line_types", None), len(restwave_peaks))  # validate
 
         init_spec = self.gen_2d_spec(init_spec_params, adjust_slope)
 
@@ -391,17 +450,18 @@ class ImageSet:
             wavelength_range = self.wavelength
 
         ratios_f = [1] + list(np.array(ratios))
+        signs = self.line_signs
         return np.array(
             [
                 np.sum(
                     [
                         norm_dist(
-                            amp_0 * ratio,
+                            amp_0 * ratio * sign,
                             rp * (1 + z),
                             sigma_ang, #/ (self.wavelength[1] - self.wavelength[0]),
                             w,
                         )
-                        for rp, ratio in zip(self.restwave_peaks, ratios_f)
+                        for rp, ratio, sign in zip(self.restwave_peaks, ratios_f, signs)
                     ]
                 )
                 + (w - np.mean(self.wavelength)) * m
@@ -428,17 +488,18 @@ class ImageSet:
         z, sigma_ang, amp_0 = params[0], params[1], params[2]
 
         ratios_f = [1] + list(self.init_spec_fit[3:])  # list(np.array(ratios))
+        signs = self.line_signs
         return np.array(
             [
                 np.sum(
                     [
                         norm_dist(
-                            amp_0 * ratio,
+                            amp_0 * ratio * sign,
                             rp * (1 + z),
                             sigma_ang,# / (self.wavelength[1] - self.wavelength[0]),
                             w,
                         )
-                        for rp, ratio in zip(self.restwave_peaks, ratios_f)
+                        for rp, ratio, sign in zip(self.restwave_peaks, ratios_f, signs)
                     ]
                 )
                 for w in self.wavelength
