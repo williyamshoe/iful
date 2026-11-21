@@ -25,6 +25,7 @@ By leveraging dynamical markers within lensed arcs as additional kinematic const
 ## Key Features
 
 - **Joint Lensing & Kinematics Modeling**: Simultaneously model 2D image-plane lensing light/mass distributions and 3D IFU datacube velocity and dispersion fields.
+- **Emission & Absorption Lines**: Model source emission lines, absorption lines, or a mix of both from the continuum-subtracted datacube, with a per-line `line_types` setting.
 - **Flexible Kinematic Profiles**: Support for standard kinematic models including Arctan velocity curves, Tanh profiles, multi-parameter profiles, central supermassive black hole (BH) influence, and custom dispersion profiles.
 - **Datacube Processing (`ImageSet`)**: Built-in continuum subtraction, outlier rejection (IQR), custom aperture masking, white-light image collapse, and noise estimation.
 - **Fast Linear Inversion**: Accelerated linear solver for source plane flux maps to reduce MCMC/optimization overhead.
@@ -156,6 +157,30 @@ gen_obs_gif(
 from IPython.display import Image as imp
 imp(filename=gif_filename)
 ```
+
+## Modeling Absorption Lines
+
+By default every line in `restwave_peaks` is treated as an emission line. To model absorption lines in the lensed source, set `line_types`, either as one string for all lines or as a list with one entry per line:
+
+```python
+imset = ImageSet(
+    datacube, wavelengths, zs, pixscale, gap, spectra_background,
+    line_types="absorption",            # or e.g. ["absorption", "emission"]
+)
+# Alternatively: imset.set_line_types("absorption"), or pass
+# line_types=... to imset.get_initial_spec_fit(...)
+
+# Simulations take the same argument:
+imset = SimulationMockImageSet(..., line_types="absorption")
+```
+
+Absorption lines are modeled as troughs in the continuum-subtracted datacube, so the lens-light continuum is still removed. Each absorption line enters the spectral template with a negative sign. As a result, `amp_0`, the line ratios in `init_spec_fit`, and the source-plane flux profile are all **positive line depths** (absorbed flux), and the linear (NNLS) flux solve works unchanged. When all lines are absorption lines, the white-light image used for 2D lens modeling and outlier masking is sign-flipped so that the absorbed flux is positive.
+
+Current assumptions and limitations:
+- Line profiles are Gaussian, so saturated absorption lines are not modeled exactly.
+- The lens galaxy should have no spectral features at the modeled wavelengths.
+- When emission and absorption lines are mixed, they share a single flux profile and kinematic field.
+- The noise model does not include Poisson noise from the subtracted source continuum.
 
 For comprehensive tutorials, check out the notebooks in the [`examples/`](https://github.com/williyamshoe/iful/tree/main/examples) directory. In particular, see the `s4c_` series of notebooks for a tutorial on simulating and fitting to real data.
 
