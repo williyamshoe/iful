@@ -42,10 +42,13 @@ class SimulationMockImageSet(ImageSet):
         1D array of wavelengths across the full mock bandpass.
     psf_path : str
         File path to `.npy` file containing the PSF kernel array.
+    line_types : None, str, or list of str, optional
+        "emission" or "absorption" per line in `restwave_peaks`. Default None (all emission).
     """
 
-    def __init__(self, size, pixscale_arcsec, zs, wavelengths_full, psf_path):
+    def __init__(self, size, pixscale_arcsec, zs, wavelengths_full, psf_path, line_types=None):
         self.zs = zs
+        self.line_types = line_types
         self.size = size
         self.pixscale = pixscale_arcsec / 3600.0  # Pixel scale converted to degrees/pixel
         
@@ -256,7 +259,8 @@ def add_instrument_noise(datacube, bg_noise_std_frac=0.02, seed=42):
     datacube : numpy.ndarray
         3D synthetic datacube without noise.
     bg_noise_std_frac : float, default=0.02
-        Standard deviation of background noise as a fraction of peak datacube flux.
+        Standard deviation of background noise as a fraction of peak absolute datacube flux
+        (so continuum-subtracted absorption cubes, which are negative, are handled).
     seed : int, default=42
         Random seed for reproducibility.
 
@@ -266,7 +270,7 @@ def add_instrument_noise(datacube, bg_noise_std_frac=0.02, seed=42):
         `(noisy_datacube, bg_noise_realization)`
     """
     np.random.seed(seed)
-    peak_flux = np.max(datacube)
+    peak_flux = np.max(np.abs(datacube))
     bg_std = bg_noise_std_frac * peak_flux
     bg_noise = np.random.normal(loc=0.0, scale=bg_std, size=datacube.shape)
     noisy_datacube = datacube + bg_noise

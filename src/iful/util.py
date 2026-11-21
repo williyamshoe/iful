@@ -13,6 +13,42 @@ import math, os
 from collections import Counter
 
 
+LINE_TYPE_SIGNS = {"emission": 1.0, "absorption": -1.0}
+
+
+def line_types_to_signs(line_types, n_lines):
+    """
+    Convert spectral line type labels to multiplicative signs (+1 emission, -1 absorption).
+
+    Parameters
+    ----------
+    line_types : None, str, or list of str
+        Line type for each spectral line ("emission" or "absorption"). None means all
+        emission; a single string is applied to every line.
+    n_lines : int
+        Number of spectral lines (length of `restwave_peaks`).
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of length `n_lines` with +1.0 for emission lines and -1.0 for absorption lines.
+    """
+    if line_types is None:
+        return np.ones(n_lines)
+    if isinstance(line_types, str):
+        line_types = [line_types] * n_lines
+    if len(line_types) != n_lines:
+        raise ValueError(
+            f"line_types has {len(line_types)} entries but there are {n_lines} lines."
+        )
+    try:
+        return np.array([LINE_TYPE_SIGNS[t.lower()] for t in line_types])
+    except KeyError as err:
+        raise ValueError(
+            f"Unknown line type {err}; expected one of {list(LINE_TYPE_SIGNS)}."
+        ) from None
+
+
 def check_list(variable):
     """
     Check if a variable is a list or NumPy ndarray.
