@@ -217,7 +217,7 @@ Distributed under the **MIT License**. See [`LICENSE`](https://github.com/williy
 
 ## Citation
 
-If you use **IFUL** in your research, please cite:
+If you use **IFUL** in your research, please cite this paper (while the JOSS submission is under review):
 
 
 ```
