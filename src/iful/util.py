@@ -49,6 +49,210 @@ def line_types_to_signs(line_types, n_lines):
         ) from None
 
 
+# Spectral line shapes: profile name -> names of its global shape parameters.
+# Every shape is peak-normalized (maximum of 1) so line amplitudes / flux maps keep the
+# same meaning as for the default Gaussian.
+LINE_PROFILES = {
+    "GAUSSIAN": [],
+    "LORENTZIAN": [],
+    "VOIGT": ["gamma"],
+    "GAUSS_HERMITE": ["h3", "h4"],
+    "SKEW_GAUSSIAN": ["alpha"],
+}
+
+_SQRT_2LN2 = np.sqrt(2.0 * np.log(2.0))
+_PEAK_GRID = np.linspace(-8.0, 8.0, 6401)
+
+
+def line_profiles_to_list(line_profiles, n_lines):
+    """
+    Convert a line profile specification into a validated, upper-case list (one per line).
+
+    Parameters
+    ----------
+    line_profiles : None, str, or list of str
+        Line shape for each spectral line (keys of `LINE_PROFILES`, case-insensitive).
+        None means all Gaussian; a single string is applied to every line.
+    n_lines : int
+        Number of spectral lines (length of `restwave_peaks`).
+
+    Returns
+    -------
+    list of str
+        Upper-case profile name per line.
+    """
+    if line_profiles is None:
+        return ["GAUSSIAN"] * n_lines
+    if isinstance(line_profiles, str):
+        line_profiles = [line_profiles] * n_lines
+    if len(line_profiles) != n_lines:
+        raise ValueError(
+            f"line_profiles has {len(line_profiles)} entries but there are {n_lines} lines."
+        )
+    names = [p.upper() for p in line_profiles]
+    for p in names:
+        if p not in LINE_PROFILES:
+            raise ValueError(f"Unknown line profile '{p}'; expected one of {list(LINE_PROFILES)}.")
+    return names
+
+
+def line_shape_param_layout(profile_list):
+    """
+    Layout of the global line-shape parameters for a list of per-line profiles.
+
+    Each distinct profile that has shape parameters contributes one shared set of
+    parameters (e.g. one `gamma` for all VOIGT lines), in order of first appearance.
+
+    Parameters
+    ----------
+    profile_list : list of str
+        Validated per-line profile names (see `line_profiles_to_list`).
+
+    Returns
+    -------
+    list of (str, list of str)
+        `(profile, param_names)` for each distinct profile with at least one shape parameter.
+    """
+    layout = []
+    for p in profile_list:
+        if LINE_PROFILES[p] and p not in [entry[0] for entry in layout]:
+            layout.append((p, LINE_PROFILES[p]))
+    return layout
+
+
+def split_line_shape_params(profile_list, shape_params):
+    """
+    Split a flat vector of global line-shape parameters into a per-profile dictionary.
+
+    Parameters
+    ----------
+    profile_list : list of str
+        Validated per-line profile names.
+    shape_params : array-like
+        Flat shape parameters ordered as given by `line_shape_param_layout`.
+
+    Returns
+    -------
+    dict
+        `{profile: numpy.ndarray of its shape parameters}` (empty array for parameter-free profiles).
+    """
+    layout = line_shape_param_layout(profile_list)
+    n_expected = sum(len(names) for _, names in layout)
+    shape_params = np.atleast_1d(np.asarray(shape_params, dtype=float))
+    if len(shape_params) != n_expected:
+        raise ValueError(
+            f"Expected {n_expected} line-shape parameters for profiles {profile_list}, got {len(shape_params)}."
+        )
+    out = {p: np.array([]) for p in profile_list}
+    i = 0
+    for p, names in layout:
+        out[p] = shape_params[i : i + len(names)]
+        i += len(names)
+    return out
+
+
+def _gauss_hermite_unnorm(y, h3, h4):
+    """Gauss-Hermite series (van der Marel & Franx 1993) without peak normalization."""
+    y2 = y * y
+    H3 = y * (2.0 * np.sqrt(2.0) * y2 - 3.0 * np.sqrt(2.0)) / np.sqrt(6.0)
+    H4 = ((4.0 * y2 - 12.0) * y2 + 3.0) / np.sqrt(24.0)
+    return np.exp(-0.5 * y2) * (1.0 + h3 * H3 + h4 * H4)
+
+
+def _skew_gaussian_unnorm(y, alpha):
+    """Skew-normal shape 2 * exp(-y^2/2) * Phi(alpha * y) without peak normalization."""
+    from scipy.special import ndtr
+
+    return 2.0 * np.exp(-0.5 * y**2) * ndtr(alpha * y)
+
+
+def line_shape(profile, dx, sigma, shape_params=()):
+    """
+    Evaluate a peak-normalized spectral line shape.
+
+    Parameters
+    ----------
+    profile : str
+        One of `LINE_PROFILES`:
+
+        - "GAUSSIAN": `exp(-dx^2 / (2 sigma^2))`.
+        - "LORENTZIAN": Lorentzian with the same FWHM as the Gaussian of width `sigma`
+          (HWHM = sqrt(2 ln 2) * sigma), so the width still follows the kinematics.
+        - "VOIGT": Gaussian (`sigma`) convolved with a Lorentzian of HWHM `gamma`
+          (same wavelength units as `dx`).
+        - "GAUSS_HERMITE": Gaussian times `1 + h3 H3(y) + h4 H4(y)`, `y = dx / sigma`.
+        - "SKEW_GAUSSIAN": skew-normal with location 0, scale `sigma` and shape `alpha`.
+    dx : array-like
+        Offset from the line location (e.g. observed wavelength minus line center).
+    sigma : array-like
+        Gaussian width, broadcastable against `dx` (same units).
+    shape_params : array-like, optional
+        Global shape parameters for the profile (see `LINE_PROFILES`).
+
+    Returns
+    -------
+    numpy.ndarray
+        Line shape with a maximum value of 1 (for GAUSS_HERMITE / SKEW_GAUSSIAN the maximum
+        is found numerically; it is not at `dx = 0` when the profile is asymmetric).
+    """
+    profile = profile.upper()
+    sigma = np.abs(sigma)
+    dx = np.asarray(dx, dtype=float)
+    if profile == "GAUSSIAN":
+        return np.exp(-0.5 * (dx / sigma) ** 2)
+    if profile == "LORENTZIAN":
+        hwhm = _SQRT_2LN2 * sigma
+        return hwhm**2 / (dx**2 + hwhm**2)
+    if profile == "VOIGT":
+        from scipy.special import voigt_profile
+
+        gamma = np.abs(shape_params[0])
+        peak = voigt_profile(0.0, sigma, gamma)
+        return voigt_profile(dx, sigma, gamma) / peak
+    if profile == "GAUSS_HERMITE":
+        h3, h4 = shape_params[0], shape_params[1]
+        peak = np.max(_gauss_hermite_unnorm(_PEAK_GRID, h3, h4))
+        peak = peak if peak > 0 else 1.0
+        return _gauss_hermite_unnorm(dx / sigma, h3, h4) / peak
+    if profile == "SKEW_GAUSSIAN":
+        alpha = shape_params[0]
+        peak = np.max(_skew_gaussian_unnorm(_PEAK_GRID, alpha))
+        return _skew_gaussian_unnorm(dx / sigma, alpha) / peak
+    raise ValueError(f"Unknown line profile '{profile}'; expected one of {list(LINE_PROFILES)}.")
+
+
+def line_template(wave, centers, weights, sigma, profile_list, shape_params=()):
+    """
+    Sum of peak-normalized line shapes: `sum_i weights_i * shape_i(wave - centers_i)`.
+
+    Parameters
+    ----------
+    wave : array-like
+        Wavelengths; may carry leading broadcast axes, e.g. shape (1, N_wave).
+    centers : array-like
+        Line centers, broadcastable against `wave`, with lines on a new last axis.
+    weights : array-like
+        Signed weight per line (length N_lines).
+    sigma : array-like
+        Gaussian width, broadcastable against `wave`.
+    profile_list : list of str
+        Validated profile per line.
+    shape_params : array-like, optional
+        Flat global shape parameters (see `line_shape_param_layout`).
+
+    Returns
+    -------
+    numpy.ndarray
+        Template evaluated at `wave` (the line axis is summed over).
+    """
+    params_by_profile = split_line_shape_params(profile_list, shape_params)
+    wave = np.asarray(wave, dtype=float)
+    out = 0.0
+    for i, (p, wt) in enumerate(zip(profile_list, weights)):
+        out = out + wt * line_shape(p, wave - centers[..., i], sigma, params_by_profile[p])
+    return out
+
+
 def check_list(variable):
     """
     Check if a variable is a list or NumPy ndarray.
